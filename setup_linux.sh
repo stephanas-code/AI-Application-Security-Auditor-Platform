@@ -110,32 +110,30 @@ fi
 # 4. Trivy (Container & Config Scanner)
 echo -e "\n${BLUE}[4/6] Installing Trivy for Container & Config Scanning...${NC}"
 if ! command -v trivy &> /dev/null; then
-  TRIVY_VER="0.58.2"
-  ARCH=$(uname -m)
-  case $ARCH in
-    x86_64) T_ARCH="64bit" ;;
-    aarch64|arm64) T_ARCH="ARM64" ;;
-    *) T_ARCH="64bit" ;;
-  esac
-
-  echo -e "[*] Downloading Trivy binary (Linux-${T_ARCH})..."
-  if curl -sSL --connect-timeout 10 -o /tmp/trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-${T_ARCH}.tar.gz" 2>/dev/null; then
-    tar -xzf /tmp/trivy.tar.gz -C /tmp/ trivy 2>/dev/null || tar -xzf /tmp/trivy.tar.gz -C /tmp/
-    $SUDO mv /tmp/trivy /usr/local/bin/ 2>/dev/null || true
-    rm -f /tmp/trivy.tar.gz
-    $SUDO chmod +x /usr/local/bin/trivy 2>/dev/null || true
+  # Method A: Try native package manager (available on Kali & Debian backports)
+  if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ] || [ "$DISTRO" = "kali" ]; then
+    $SUDO apt-get install -y trivy 2>/dev/null || true
   fi
 
-  # Fallback to official script if direct download failed
+  # Method B: Official Aqua Security installer script
   if ! command -v trivy &> /dev/null; then
-    echo -e "[*] Trying official Trivy install script fallback..."
-    curl -sfL --connect-timeout 10 https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | $SUDO sh -s -- -b /usr/local/bin 2>/dev/null || true
+    echo -e "[*] Installing Trivy via official release binary..."
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | $SUDO sh -s -- -b /usr/local/bin 2>/dev/null || true
+  fi
+
+  # Method C: Direct .deb package fallback
+  if ! command -v trivy &> /dev/null; then
+    wget -q "https://github.com/aquasecurity/trivy/releases/download/v0.58.2/trivy_0.58.2_Linux-64bit.deb" -O /tmp/trivy.deb 2>/dev/null || true
+    if [ -f /tmp/trivy.deb ]; then
+      $SUDO dpkg -i /tmp/trivy.deb 2>/dev/null || true
+      rm -f /tmp/trivy.deb 2>/dev/null || true
+    fi
   fi
 
   if command -v trivy &> /dev/null; then
     echo -e "${GREEN}[✓] Trivy installed successfully.${NC}"
   else
-    echo -e "${YELLOW}[!] Trivy installation skipped (network timeout). You can install it later with: sudo apt install trivy${NC}"
+    echo -e "${YELLOW}[!] Trivy install skipped. Platform will use SAST/Gitleaks/OSV analyzers.${NC}"
   fi
 else
   echo -e "${GREEN}[✓] Trivy already installed: $(trivy --version 2>/dev/null | head -n 1 || echo 'ready')${NC}"
