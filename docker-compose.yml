@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   appsec-platform:
     build:
@@ -14,4 +12,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - ./scans:/tmp/appsec_scans
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
