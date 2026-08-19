@@ -107,7 +107,7 @@ else
   echo -e "${GREEN}[✓] Gitleaks already installed: $(gitleaks version 2>/dev/null || echo 'ready')${NC}"
 fi
 
-# 4. Trivy (Direct Release Binary Installation - Zero API Rate Limit)
+# 4. Trivy (Container & Config Scanner)
 echo -e "\n${BLUE}[4/6] Installing Trivy for Container & Config Scanning...${NC}"
 if ! command -v trivy &> /dev/null; then
   TRIVY_VER="0.58.2"
@@ -118,13 +118,25 @@ if ! command -v trivy &> /dev/null; then
     *) T_ARCH="64bit" ;;
   esac
 
-  echo -e "[*] Downloading Trivy v${TRIVY_VER} (${T_ARCH})..."
-  wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-${T_ARCH}.tar.gz" -O /tmp/trivy.tar.gz
-  tar -xzf /tmp/trivy.tar.gz -C /tmp/ trivy
-  $SUDO mv /tmp/trivy /usr/local/bin/
-  rm -f /tmp/trivy.tar.gz
-  $SUDO chmod +x /usr/local/bin/trivy
-  echo -e "${GREEN}[✓] Trivy installed successfully.${NC}"
+  echo -e "[*] Downloading Trivy binary (Linux-${T_ARCH})..."
+  if curl -sSL --connect-timeout 10 -o /tmp/trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-${T_ARCH}.tar.gz" 2>/dev/null; then
+    tar -xzf /tmp/trivy.tar.gz -C /tmp/ trivy 2>/dev/null || tar -xzf /tmp/trivy.tar.gz -C /tmp/
+    $SUDO mv /tmp/trivy /usr/local/bin/ 2>/dev/null || true
+    rm -f /tmp/trivy.tar.gz
+    $SUDO chmod +x /usr/local/bin/trivy 2>/dev/null || true
+  fi
+
+  # Fallback to official script if direct download failed
+  if ! command -v trivy &> /dev/null; then
+    echo -e "[*] Trying official Trivy install script fallback..."
+    curl -sfL --connect-timeout 10 https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | $SUDO sh -s -- -b /usr/local/bin 2>/dev/null || true
+  fi
+
+  if command -v trivy &> /dev/null; then
+    echo -e "${GREEN}[✓] Trivy installed successfully.${NC}"
+  else
+    echo -e "${YELLOW}[!] Trivy installation skipped (network timeout). You can install it later with: sudo apt install trivy${NC}"
+  fi
 else
   echo -e "${GREEN}[✓] Trivy already installed: $(trivy --version 2>/dev/null | head -n 1 || echo 'ready')${NC}"
 fi
