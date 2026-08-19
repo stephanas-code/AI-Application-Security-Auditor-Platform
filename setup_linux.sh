@@ -18,13 +18,13 @@ echo -e "${GREEN}  AI Application Security Auditor & Remediation Platform - Inst
 echo -e "${BLUE}====================================================================${NC}"
 
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${YELLOW}[!] Warning: Running without sudo/root. Will use sudo for package installation.${NC}"
+  echo -e "${YELLOW}[!] Warning: Running without sudo/root. Will use sudo for system package installation.${NC}"
   SUDO="sudo"
 else
   SUDO=""
 fi
 
-# Clean up any broken trivy repository entries from previous runs
+# Clean up any broken apt repository entries from previous runs
 $SUDO rm -f /etc/apt/sources.list.d/trivy.list 2>/dev/null || true
 
 # Detect Linux Distribution
@@ -50,16 +50,27 @@ elif [ "$DISTRO" = "alpine" ]; then
   $SUDO apk add --no-cache nmap curl wget git python3 py3-pip gcc musl-dev jq nodejs npm
 fi
 
-# 2. Python Security Tools: Bandit, pip-audit, Semgrep
-echo -e "\n${BLUE}[2/6] Installing Python AppSec Analyzers (Bandit, pip-audit, Semgrep)...${NC}"
-# Try apt packages first if available, otherwise pip with --break-system-packages
-if [ "$DISTRO" = "kali" ] || [ "$DISTRO" = "debian" ] || [ "$DISTRO" = "ubuntu" ]; then
-  $SUDO apt-get install -y bandit 2>/dev/null || true
+# 2. Python Security Virtual Environment & AppSec Tools (.venv)
+echo -e "\n${BLUE}[2/6] Setting up Dedicated Python Virtual Environment (.venv)...${NC}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+if [ ! -d "$VENV_DIR" ]; then
+  echo -e "[*] Creating virtual environment at $VENV_DIR..."
+  python3 -m venv "$VENV_DIR"
 fi
 
-pip3 install --break-system-packages bandit pip-audit semgrep 2>/dev/null || \
-pip3 install bandit pip-audit semgrep || \
-echo -e "${YELLOW}[!] Python packages installed with best effort.${NC}"
+echo -e "[*] Installing Python AppSec dependencies from requirements.txt into .venv..."
+"$VENV_DIR/bin/pip" install --upgrade pip
+"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
+
+# Link binaries to /usr/local/bin for system-wide access by server process
+for tool in bandit pip-audit semgrep; do
+  if [ -f "$VENV_DIR/bin/$tool" ]; then
+    $SUDO ln -sf "$VENV_DIR/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null || true
+  fi
+done
+echo -e "${GREEN}[✓] Python security virtual environment configured successfully.${NC}"
 
 # 3. Gitleaks (Secret Scanner)
 echo -e "\n${BLUE}[3/6] Installing Gitleaks for Automated Secret Detection...${NC}"
@@ -82,10 +93,23 @@ else
   echo -e "${GREEN}[✓] Gitleaks already installed: $(gitleaks version 2>/dev/null || echo 'ready')${NC}"
 fi
 
-# 4. Trivy (Direct Binary Install)
+# 4. Trivy (Direct Release Binary Installation - Zero API Rate Limit)
 echo -e "\n${BLUE}[4/6] Installing Trivy for Container & Config Scanning...${NC}"
 if ! command -v trivy &> /dev/null; then
-  curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | $SUDO sh -s -- -b /usr/local/bin
+  TRIVY_VER="0.58.2"
+  ARCH=$(uname -m)
+  case $ARCH in
+    x86_64) T_ARCH="64bit" ;;
+    aarch64|arm64) T_ARCH="ARM64" ;;
+    *) T_ARCH="64bit" ;;
+  esac
+
+  echo -e "[*] Downloading Trivy v${TRIVY_VER} (${T_ARCH})..."
+  wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-${T_ARCH}.tar.gz" -O /tmp/trivy.tar.gz
+  tar -xzf /tmp/trivy.tar.gz -C /tmp/ trivy
+  $SUDO mv /tmp/trivy /usr/local/bin/
+  rm -f /tmp/trivy.tar.gz
+  $SUDO chmod +x /usr/local/bin/trivy
   echo -e "${GREEN}[✓] Trivy installed successfully.${NC}"
 else
   echo -e "${GREEN}[✓] Trivy already installed: $(trivy --version 2>/dev/null | head -n 1 || echo 'ready')${NC}"
@@ -107,6 +131,8 @@ echo "--------------------------------------------------------"
 for tool in nmap gitleaks semgrep bandit pip-audit trivy git node npm; do
   if command -v $tool &> /dev/null; then
     printf "${GREEN}%-15s %-12s %-30s${NC}\n" "$tool" "INSTALLED" "$(which $tool)"
+  elif [ -f "$VENV_DIR/bin/$tool" ]; then
+    printf "${GREEN}%-15s %-12s %-30s${NC}\n" "$tool" "INSTALLED" "$VENV_DIR/bin/$tool"
   else
     printf "${YELLOW}%-15s %-12s %-30s${NC}\n" "$tool" "MISSING" "-"
   fi

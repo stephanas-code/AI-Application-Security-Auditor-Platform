@@ -54,17 +54,26 @@ if (!fs.existsSync(SCAN_WORKSPACES_DIR)) {
 async function checkCommand(cmd: string, versionFlag = '--version'): Promise<{ installed: boolean; version?: string; path?: string }> {
   try {
     const isWindows = process.platform === 'win32';
-    const whichCmd = isWindows ? `where ${cmd}` : `which ${cmd}`;
-    const { stdout: binPath } = await execAsync(whichCmd);
+    const venvBin = path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
+    let resolvedCmd = cmd;
+    let binPath = '';
+
+    if (fs.existsSync(venvBin)) {
+      resolvedCmd = `"${venvBin}"`;
+      binPath = venvBin;
+    } else {
+      const whichCmd = isWindows ? `where ${cmd}` : `which ${cmd}`;
+      const { stdout } = await execAsync(whichCmd);
+      binPath = stdout.split('\n')[0]?.trim();
+    }
     
     let version = 'detected';
     try {
-      const { stdout: verOut, stderr: verErr } = await execAsync(`${cmd} ${versionFlag}`);
+      const { stdout: verOut, stderr: verErr } = await execAsync(`${resolvedCmd} ${versionFlag}`);
       version = (verOut || verErr || '').split('\n')[0]?.trim() || 'detected';
     } catch {
-      // some tools use -V or -v
       try {
-        const { stdout: verOut } = await execAsync(`${cmd} -v`);
+        const { stdout: verOut } = await execAsync(`${resolvedCmd} -v`);
         version = verOut.split('\n')[0]?.trim() || 'detected';
       } catch {
         version = 'available';
@@ -73,7 +82,7 @@ async function checkCommand(cmd: string, versionFlag = '--version'): Promise<{ i
 
     return {
       installed: true,
-      path: binPath.split('\n')[0]?.trim(),
+      path: binPath,
       version
     };
   } catch {
