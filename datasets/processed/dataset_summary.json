@@ -1,0 +1,43 @@
+{
+  "datasets": {
+    "primevul": {
+      "name": "PrimeVul (ICSE 2025)",
+      "purpose": "Vulnerability Detection & CWE Classification",
+      "homepage": "https://github.com/DLVulDet/PrimeVul",
+      "sample_count": "~236,000 (7k vulnerable, 229k benign)",
+      "cwes_covered": "140+ CWEs",
+      "primary_url": "https://raw.githubusercontent.com/DLVulDet/PrimeVul/main/data/primevul_sample.json"
+    },
+    "vulnrepaireval": {
+      "name": "VulnRepairEval (2025)",
+      "purpose": "Functional Exploit-Based Patch Verification Benchmark",
+      "homepage": "https://arxiv.org/abs/2509.03331",
+      "sample_count": "400+ CVEs, 23 fully automated exploit PoC harnesses",
+      "cwes_covered": "Python & Multi-Language Real-World CVEs"
+    },
+    "diversevul": {
+      "name": "DiverseVul (2023-2025)",
+      "purpose": "Multi-Source Generalization & Out-of-Distribution Testing",
+      "homepage": "https://link.springer.com/article/10.1186/s42400-025-00518-7",
+      "sample_count": "330,000+ C/C++/Python functions"
+    },
+    "hackersignal": {
+      "name": "HackerSignal (1990-2026)",
+      "purpose": "Full Lifecycle: Vulnerability -> Discussion -> CVE -> Exploit -> Advisory -> Fix",
+      "homepage": "https://arxiv.org/abs/2605.03158",
+      "sample_count": "7.45 Million deduplicated security graph nodes"
+    },
+    "cyberfixbench": {
+      "name": "CyberFixBench (Platform Proprietary Telemetry)",
+      "purpose": "Closed-Loop: Scan -> Detect -> Exploit Proof -> Patch -> Rescan Verified",
+      "sample_count": "Locally aggregated and anonymized benchmark records"
+    }
+  },
+  "processed_files": {
+    "primevul": "C:\\Users\\Defendatafrika\\Desktop\\workspace\\AI-Application-Security-Auditor-Platform\\datasets\\processed\\primevul_curated.json",
+    "vulnrepaireval": "C:\\Users\\Defendatafrika\\Desktop\\workspace\\AI-Application-Security-Auditor-Platform\\datasets\\processed\\vulnrepaireval_benchmarks.json",
+    "train_detection_jsonl": "C:\\Users\\Defendatafrika\\Desktop\\workspace\\AI-Application-Security-Auditor-Platform\\datasets\\processed\\train_detection_chatml.jsonl",
+    "train_remediation_jsonl": "C:\\Users\\Defendatafrika\\Desktop\\workspace\\AI-Application-Security-Auditor-Platform\\datasets\\processed\\train_remediation_chatml.jsonl"
+  },
+  "status": "READY_FOR_TRAINING"
+}

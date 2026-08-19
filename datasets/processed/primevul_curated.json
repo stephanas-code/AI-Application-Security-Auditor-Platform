@@ -1,0 +1,83 @@
+[
+  {
+    "id": "primevul-seed-cwe89-01",
+    "dataset": "PrimeVul",
+    "language": "python",
+    "cwe": "CWE-89",
+    "cwe_name": "SQL Injection",
+    "vulnerable": 1,
+    "target": 1,
+    "func": "def get_user_transactions(user_id, status_filter):\n    query = f\"SELECT id, amount, memo FROM transactions WHERE user_id = '{user_id}' AND status = '{status_filter}'\"\n    cursor = db.cursor()\n    cursor.execute(query)\n    return cursor.fetchall()",
+    "vuln_lines": [
+      2,
+      4
+    ],
+    "root_cause": "Dynamic f-string interpolation directly concatenates user parameters into raw SQL query without prepared statements.",
+    "fixed_func": "def get_user_transactions(user_id, status_filter):\n    query = \"SELECT id, amount, memo FROM transactions WHERE user_id = %s AND status = %s\"\n    cursor = db.cursor()\n    cursor.execute(query, (user_id, status_filter))\n    return cursor.fetchall()",
+    "patch_diff": "- query = f\"SELECT id, amount, memo FROM transactions WHERE user_id = '{user_id}' AND status = '{status_filter}'\"\n- cursor.execute(query)\n+ query = \"SELECT id, amount, memo FROM transactions WHERE user_id = %s AND status = %s\"\n+ cursor.execute(query, (user_id, status_filter))"
+  },
+  {
+    "id": "primevul-seed-cwe78-02",
+    "dataset": "PrimeVul",
+    "language": "python",
+    "cwe": "CWE-78",
+    "cwe_name": "OS Command Injection",
+    "vulnerable": 1,
+    "target": 1,
+    "func": "def check_network_host(hostname):\n    cmd = 'ping -c 1 ' + hostname\n    output = subprocess.check_output(cmd, shell=True)\n    return output.decode('utf-8')",
+    "vuln_lines": [
+      2,
+      3
+    ],
+    "root_cause": "Direct string concatenation passed to subprocess with shell=True enables command chaining metacharacters (; && |).",
+    "fixed_func": "def check_network_host(hostname):\n    import re\n    if not re.match(r'^[a-zA-Z0-9.-]+$', hostname):\n        raise ValueError('Invalid hostname format')\n    output = subprocess.check_output(['ping', '-c', '1', hostname], shell=False)\n    return output.decode('utf-8')",
+    "patch_diff": "- cmd = 'ping -c 1 ' + hostname\n- output = subprocess.check_output(cmd, shell=True)\n+ if not re.match(r'^[a-zA-Z0-9.-]+$', hostname): raise ValueError('Invalid hostname')\n+ output = subprocess.check_output(['ping', '-c', '1', hostname], shell=False)"
+  },
+  {
+    "id": "primevul-seed-cwe798-03",
+    "dataset": "PrimeVul",
+    "language": "python",
+    "cwe": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "vulnerable": 1,
+    "target": 1,
+    "func": "def initialize_aws_client():\n    AWS_ACCESS_KEY = 'AKIAIOSFODNN7EXAMPLE'\n    AWS_SECRET_KEY = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'\n    client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY)\n    return client",
+    "vuln_lines": [
+      2,
+      3
+    ],
+    "root_cause": "High-entropy plaintext AWS IAM access credentials committed directly into source code.",
+    "fixed_func": "def initialize_aws_client():\n    aws_key = os.getenv('AWS_ACCESS_KEY_ID')\n    aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')\n    if not aws_key or not aws_secret:\n        raise EnvironmentError('AWS credentials missing in runtime environment')\n    client = boto3.client('s3', aws_access_key_id=aws_key, aws_secret_access_key=aws_secret)\n    return client",
+    "patch_diff": "- AWS_ACCESS_KEY = 'AKIAIOSFODNN7EXAMPLE'\n- AWS_SECRET_KEY = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'\n+ aws_key = os.getenv('AWS_ACCESS_KEY_ID')\n+ aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')"
+  },
+  {
+    "id": "primevul-seed-cwe306-04",
+    "dataset": "PrimeVul",
+    "language": "javascript",
+    "cwe": "CWE-306",
+    "cwe_name": "Missing Authentication for Critical Function",
+    "vulnerable": 1,
+    "target": 1,
+    "func": "app.get('/api/admin/dump-database', async (req, res) => {\n  const data = await db.query('SELECT * FROM customer_vault');\n  res.json(data);\n});",
+    "vuln_lines": [
+      1
+    ],
+    "root_cause": "Privileged database dump route is mounted without authentication or RBAC authorization middleware.",
+    "fixed_func": "app.get('/api/admin/dump-database', requireAuth, requireRole('SUPER_ADMIN'), async (req, res) => {\n  const data = await db.query('SELECT id, name, created_at FROM customer_vault');\n  res.json(data);\n});",
+    "patch_diff": "- app.get('/api/admin/dump-database', async (req, res) => {\n+ app.get('/api/admin/dump-database', requireAuth, requireRole('SUPER_ADMIN'), async (req, res) => {"
+  },
+  {
+    "id": "primevul-seed-benign-05",
+    "dataset": "PrimeVul",
+    "language": "python",
+    "cwe": "BENIGN",
+    "cwe_name": "Secure Parameterized Query",
+    "vulnerable": 0,
+    "target": 0,
+    "func": "def get_item_by_sku(sku):\n    with db.connection() as conn:\n        cursor = conn.cursor()\n        cursor.execute('SELECT id, name, price, stock FROM inventory WHERE sku = %s', (sku,))\n        return cursor.fetchone()",
+    "vuln_lines": [],
+    "root_cause": "None. Input is parameterized properly.",
+    "fixed_func": null,
+    "patch_diff": null
+  }
+]

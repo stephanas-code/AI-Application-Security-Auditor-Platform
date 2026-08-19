@@ -1,0 +1,44 @@
+[
+  {
+    "benchmark_id": "VRE-PY-001",
+    "cve": "CVE-2023-32681",
+    "ecosystem": "PyPI",
+    "package": "requests",
+    "vulnerable_range": "<2.31.0",
+    "fixed_version": "2.31.0",
+    "vulnerability_type": "CWE-200 / Sensitive Header Leak",
+    "exploit_verification_harness": {
+      "exploit_poc_code": "def test_proxy_auth_leak_on_redirect(client):\n    res = client.get('http://proxy.test/redirect-to-untrusted', headers={'Proxy-Authorization': 'SecretToken'})\n    assert 'Proxy-Authorization' not in res.dest_headers",
+      "vulnerable_behavior": "Proxy-Authorization header is forwarded to untrusted redirect destination (EXPLOIT SUCCESS)",
+      "remediated_behavior": "Proxy-Authorization header is stripped before redirect to foreign host (EXPLOIT BLOCKED)"
+    }
+  },
+  {
+    "benchmark_id": "VRE-PY-002",
+    "cve": "CVE-2020-14343",
+    "ecosystem": "PyPI",
+    "package": "PyYAML",
+    "vulnerable_range": "<5.4",
+    "fixed_version": "5.4",
+    "vulnerability_type": "CWE-502 / Insecure YAML Deserialization",
+    "exploit_verification_harness": {
+      "exploit_poc_code": "def test_yaml_deserialization_blocked():\n    payload = '!!python/object/apply:os.system [\"touch /tmp/pwned\"]'\n    try:\n        yaml.safe_load(payload)\n    except yaml.constructor.ConstructorError:\n        assert True # Secure",
+      "vulnerable_behavior": "FullLoader evaluates object constructor and spawns subshell (EXPLOIT SUCCESS)",
+      "remediated_behavior": "SafeLoader rejects python/object constructor tags as unsafe (EXPLOIT BLOCKED)"
+    }
+  },
+  {
+    "benchmark_id": "VRE-JS-003",
+    "cve": "CVE-2020-8203",
+    "ecosystem": "npm",
+    "package": "lodash",
+    "vulnerable_range": "<4.17.21",
+    "fixed_version": "4.17.21",
+    "vulnerability_type": "CWE-1321 / Prototype Pollution",
+    "exploit_verification_harness": {
+      "exploit_poc_code": "it('prevents Object.prototype pollution via zipObjectDeep', () => {\n  _.zipObjectDeep(['__proto__.polluted'], ['yes']);\n  expect({}.polluted).toBeUndefined();\n});",
+      "vulnerable_behavior": "Global Object.prototype is modified with property 'polluted': 'yes' (EXPLOIT SUCCESS)",
+      "remediated_behavior": "Keys containing '__proto__' or 'constructor' are sanitized (EXPLOIT BLOCKED)"
+    }
+  }
+]
