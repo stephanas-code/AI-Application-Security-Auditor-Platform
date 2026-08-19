@@ -56,6 +56,7 @@ async function checkCommand(cmd: string, versionFlag = '--version'): Promise<{ i
     const isWindows = process.platform === 'win32';
     const venvBin1 = path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
     const venvBin2 = path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
+    const venvBin3 = path.join(os.homedir(), '.appsec_venv', 'bin', cmd);
     let resolvedCmd = cmd;
     let binPath = '';
 
@@ -65,6 +66,9 @@ async function checkCommand(cmd: string, versionFlag = '--version'): Promise<{ i
     } else if (fs.existsSync(venvBin2)) {
       resolvedCmd = `"${venvBin2}"`;
       binPath = venvBin2;
+    } else if (fs.existsSync(venvBin3)) {
+      resolvedCmd = `"${venvBin3}"`;
+      binPath = venvBin3;
     } else {
       const whichCmd = isWindows ? `where ${cmd}` : `which ${cmd}`;
       const { stdout } = await execAsync(whichCmd);

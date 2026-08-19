@@ -51,18 +51,25 @@ elif [ "$DISTRO" = "alpine" ]; then
 fi
 
 # 2. Python Security Virtual Environment & AppSec Tools (venv)
-echo -e "\n${BLUE}[2/6] Setting up Dedicated Python Virtual Environment (venv)...${NC}"
+echo -e "\n${BLUE}[2/6] Setting up Dedicated Python Virtual Environment for Linux...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -d "$SCRIPT_DIR/venv" ]; then
+
+# Check if local venv has Linux bin/pip (not Windows Scripts/pip.exe)
+if [ -f "$SCRIPT_DIR/venv/bin/pip" ]; then
   VENV_DIR="$SCRIPT_DIR/venv"
-elif [ -d "$SCRIPT_DIR/.venv" ]; then
+elif [ -f "$SCRIPT_DIR/.venv/bin/pip" ]; then
   VENV_DIR="$SCRIPT_DIR/.venv"
 else
-  VENV_DIR="$SCRIPT_DIR/venv"
+  # In VirtualBox/VMware shared folders, use Linux filesystem to avoid symlink/NTFS collisions
+  VENV_DIR="$HOME/.appsec_venv"
+  if [ ! -d "$VENV_DIR" ]; then
+    echo -e "[*] Creating Linux-native virtual environment at $VENV_DIR..."
+    python3 -m venv "$VENV_DIR"
+  fi
 fi
 
-if [ ! -d "$VENV_DIR" ]; then
-  echo -e "[*] Creating virtual environment at $VENV_DIR..."
+if [ ! -f "$VENV_DIR/bin/pip" ]; then
+  echo -e "[*] Initializing virtual environment at $VENV_DIR..."
   python3 -m venv "$VENV_DIR"
 fi
 
@@ -74,9 +81,10 @@ echo -e "[*] Installing Python AppSec dependencies from requirements.txt into $V
 for tool in bandit pip-audit semgrep; do
   if [ -f "$VENV_DIR/bin/$tool" ]; then
     $SUDO ln -sf "$VENV_DIR/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null || true
+    $SUDO cp -f "$VENV_DIR/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null || true
   fi
 done
-echo -e "${GREEN}[✓] Python security virtual environment configured successfully.${NC}"
+echo -e "${GREEN}[✓] Python security virtual environment configured successfully at: $VENV_DIR${NC}"
 
 # 3. Gitleaks (Secret Scanner)
 echo -e "\n${BLUE}[3/6] Installing Gitleaks for Automated Secret Detection...${NC}"
