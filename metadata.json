@@ -1,0 +1,6 @@
+{
+  "name": "AI Application Security Auditor & Remediation Platform",
+  "description": "Enterprise AppSec platform to Find, Understand, Prioritize, Recommend, Fix, Test, Rescan, and Verify security vulnerabilities across code, dependencies, secrets, and cloud configurations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
