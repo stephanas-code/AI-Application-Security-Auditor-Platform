@@ -50,17 +50,23 @@ elif [ "$DISTRO" = "alpine" ]; then
   $SUDO apk add --no-cache nmap curl wget git python3 py3-pip gcc musl-dev jq nodejs npm
 fi
 
-# 2. Python Security Virtual Environment & AppSec Tools (.venv)
-echo -e "\n${BLUE}[2/6] Setting up Dedicated Python Virtual Environment (.venv)...${NC}"
+# 2. Python Security Virtual Environment & AppSec Tools (venv)
+echo -e "\n${BLUE}[2/6] Setting up Dedicated Python Virtual Environment (venv)...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
+if [ -d "$SCRIPT_DIR/venv" ]; then
+  VENV_DIR="$SCRIPT_DIR/venv"
+elif [ -d "$SCRIPT_DIR/.venv" ]; then
+  VENV_DIR="$SCRIPT_DIR/.venv"
+else
+  VENV_DIR="$SCRIPT_DIR/venv"
+fi
 
 if [ ! -d "$VENV_DIR" ]; then
   echo -e "[*] Creating virtual environment at $VENV_DIR..."
   python3 -m venv "$VENV_DIR"
 fi
 
-echo -e "[*] Installing Python AppSec dependencies from requirements.txt into .venv..."
+echo -e "[*] Installing Python AppSec dependencies from requirements.txt into $VENV_DIR..."
 "$VENV_DIR/bin/pip" install --upgrade pip
 "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 

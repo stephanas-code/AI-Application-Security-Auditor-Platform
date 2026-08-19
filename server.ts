@@ -54,13 +54,17 @@ if (!fs.existsSync(SCAN_WORKSPACES_DIR)) {
 async function checkCommand(cmd: string, versionFlag = '--version'): Promise<{ installed: boolean; version?: string; path?: string }> {
   try {
     const isWindows = process.platform === 'win32';
-    const venvBin = path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
+    const venvBin1 = path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
+    const venvBin2 = path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? `${cmd}.exe` : cmd);
     let resolvedCmd = cmd;
     let binPath = '';
 
-    if (fs.existsSync(venvBin)) {
-      resolvedCmd = `"${venvBin}"`;
-      binPath = venvBin;
+    if (fs.existsSync(venvBin1)) {
+      resolvedCmd = `"${venvBin1}"`;
+      binPath = venvBin1;
+    } else if (fs.existsSync(venvBin2)) {
+      resolvedCmd = `"${venvBin2}"`;
+      binPath = venvBin2;
     } else {
       const whichCmd = isWindows ? `where ${cmd}` : `which ${cmd}`;
       const { stdout } = await execAsync(whichCmd);
