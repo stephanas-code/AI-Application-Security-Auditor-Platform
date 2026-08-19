@@ -14,7 +14,8 @@ import {
   RefreshCw,
   FileText,
   Crosshair,
-  Radio
+  Radio,
+  Database
 } from 'lucide-react';
 import { NavigationTab, ScanTarget, ScanResult } from '../types';
 
@@ -81,6 +82,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Wrench,
       badge: scanResult.metrics.resolvedCount > 0 ? `${scanResult.metrics.resolvedCount} fixed` : null,
       badgeColor: 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+    },
+    {
+      id: 'datasets' as NavigationTab,
+      label: 'AI Datasets & Training',
+      icon: Database,
+      badge: 'PrimeVul',
+      badgeColor: 'bg-blue-950 text-blue-400 border border-blue-800 font-mono text-[9px]'
     },
     {
       id: 'compliance' as NavigationTab,

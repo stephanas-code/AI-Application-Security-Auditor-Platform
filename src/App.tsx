@@ -18,6 +18,7 @@ import { RedTeamDashboardView } from './components/views/RedTeamDashboardView';
 import { RemediationHubView } from './components/views/RemediationHubView';
 import { ComplianceMapView } from './components/views/ComplianceMapView';
 import { ThreatIntelForensicsView } from './components/views/ThreatIntelForensicsView';
+import { DatasetView } from './components/views/DatasetView';
 import { SettingsView } from './components/views/SettingsView';
 
 import { RemediationModal } from './components/RemediationModal';
@@ -369,6 +370,11 @@ export default function App() {
                     setCurrentTab('scans');
                   }}
                 />
+              )}
+
+              {/* VIEW: DATASET & AI TRAINING INTELLIGENCE */}
+              {currentTab === 'datasets' && (
+                <DatasetView />
               )}
 
               {/* VIEW 5: SETTINGS */}

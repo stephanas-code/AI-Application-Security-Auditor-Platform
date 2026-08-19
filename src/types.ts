@@ -16,7 +16,7 @@ export type FindingCategory = VulnerabilityCategory;
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
 export type SeverityLevel = Severity;
 
-export type NavigationTab = 'overview' | 'scans' | 'redteam' | 'remediation' | 'compliance' | 'threat_intel' | 'settings';
+export type NavigationTab = 'overview' | 'scans' | 'redteam' | 'remediation' | 'compliance' | 'threat_intel' | 'datasets' | 'settings';
 
 export type TargetPlatform = 'web' | 'android' | 'ios' | 'windows' | 'macos' | 'cloud';
 
