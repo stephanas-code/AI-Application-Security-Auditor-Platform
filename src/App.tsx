@@ -75,13 +75,17 @@ export default function App() {
     runScan(BENCHMARK_PROJECTS[0]!);
   }, []);
 
-  const runScan = (target: ScanTarget) => {
+  const runScan = async (target: ScanTarget) => {
     setIsScanning(true);
-    setTimeout(() => {
-      const result = SecurityEngine.scanCodebase(target);
+    try {
+      const result = await SecurityEngine.scanCodebaseAsync(target);
       setScanResult(result);
+    } catch (e) {
+      const fallback = SecurityEngine.scanCodebase(target);
+      setScanResult(fallback);
+    } finally {
       setIsScanning(false);
-    }, 400);
+    }
   };
 
   const handleSelectTarget = (target: ScanTarget) => {
@@ -90,14 +94,15 @@ export default function App() {
     setCurrentTab('overview');
   };
 
-  const handleRescan = () => {
+  const handleRescan = async () => {
     if (!currentTarget || !scanResult) return;
     setIsScanning(true);
-    setTimeout(() => {
+    try {
       const updated = SecurityEngine.verifyAndRescan(currentTarget, scanResult.findings);
       setScanResult(updated);
+    } finally {
       setIsScanning(false);
-    }, 400);
+    }
   };
 
   const handleOpenFindingModal = (finding: VulnerabilityFinding, initialTab: 'explain' | 'recommend' | 'fix' = 'explain') => {

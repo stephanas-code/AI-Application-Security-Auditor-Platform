@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  appsec-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: appsec_auditor_platform
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./scans:/tmp/appsec_scans
+    restart: unless-stopped

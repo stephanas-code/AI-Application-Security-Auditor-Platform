@@ -146,6 +146,10 @@ export interface WebsiteMetadata {
   discoveredEndpoints?: DiscoveredEndpoint[];
   dnsRecords?: DnsRecordAudit[];
   cookieAudit?: CookieAuditItem[];
+  status?: number;
+  responseTimeMs?: number;
+  tlsInfo?: any;
+  headers?: Record<string, string>;
 }
 
 export interface ScanTarget {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Settings as SettingsIcon, 
   Cpu, 
@@ -11,7 +11,12 @@ import {
   CheckCircle2, 
   FileText,
   Key,
-  RotateCcw
+  RotateCcw,
+  Terminal,
+  RefreshCw,
+  AlertTriangle,
+  Server,
+  Zap
 } from 'lucide-react';
 import { PlatformSettings } from '../../types';
 
@@ -26,6 +31,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [localSettings, setLocalSettings] = useState<PlatformSettings>(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Linux AppSec Tools Diagnostic State
+  const [toolsStatus, setToolsStatus] = useState<{
+    platform: string;
+    arch: string;
+    tools: Record<string, { installed: boolean; version?: string; path?: string }>;
+    summary?: any;
+  } | null>(null);
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
+
+  useEffect(() => {
+    fetchToolsStatus();
+  }, []);
+
+  const fetchToolsStatus = async () => {
+    setIsLoadingTools(true);
+    try {
+      const res = await fetch('/api/tools/status');
+      if (res.ok) {
+        const data = await res.json();
+        setToolsStatus(data);
+      }
+    } catch (e) {
+      console.warn('Could not fetch tools status:', e);
+    } finally {
+      setIsLoadingTools(false);
+    }
+  };
 
   const handleSave = () => {
     onSaveSettings(localSettings);
@@ -66,7 +99,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </h1>
           </div>
           <p className="text-xs text-gray-400 mt-1 max-w-2xl leading-relaxed">
-            Configure autonomous AI reasoning models, scanner modules, binary analysis pipelines, and compliance verification standards.
+            Configure autonomous AI reasoning models, Linux CLI security engines, DAST network probes, and compliance verification standards.
           </p>
         </div>
 
@@ -94,6 +127,94 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>Platform configuration updated successfully. Applied to subsequent scan cycles.</span>
         </div>
       )}
+
+      {/* Linux AppSec Tools Diagnostic Center */}
+      <div className="p-6 rounded-2xl bg-[#111111] border border-[#1F1F1F] space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Terminal className="h-5 w-5 text-[#FF3B30]" />
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                Linux AppSec Tools & Engine Diagnostics
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Status of command-line security binaries installed on the host system ({toolsStatus?.platform || 'Linux'} {toolsStatus?.arch || ''})
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={fetchToolsStatus}
+            disabled={isLoadingTools}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#181818] hover:bg-[#222222] border border-[#262626] text-xs font-mono text-gray-300 hover:text-white transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoadingTools ? 'animate-spin text-blue-400' : ''}`} />
+            <span>Rescan Tools</span>
+          </button>
+        </div>
+
+        {toolsStatus?.tools ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { id: 'nmap', name: 'Nmap Network Scanner', role: 'DAST / Port & CVE NSE Scripts', installCmd: 'apt install nmap' },
+              { id: 'semgrep', name: 'Semgrep SAST', role: 'Static Code Analysis & Taint Tracking', installCmd: 'pip3 install semgrep' },
+              { id: 'gitleaks', name: 'Gitleaks Secrets', role: 'API Key & Token Discovery', installCmd: 'setup_linux.sh' },
+              { id: 'trivy', name: 'Trivy Scanner', role: 'Container & IaC Security', installCmd: 'apt install trivy' },
+              { id: 'bandit', name: 'Bandit Python SAST', role: 'Python AST Security Auditing', installCmd: 'pip3 install bandit' },
+              { id: 'pipAudit', name: 'pip-audit SCA', role: 'Python Dependency CVE Auditing', installCmd: 'pip3 install pip-audit' },
+              { id: 'git', name: 'Git CLI', role: 'Repository Ingestion & Cloning', installCmd: 'apt install git' },
+              { id: 'python3', name: 'Python 3 Runtime', role: 'Script Execution & Virtualenvs', installCmd: 'apt install python3' },
+              { id: 'docker', name: 'Docker Engine', role: 'Container Sandbox Environments', installCmd: 'apt install docker.io' }
+            ].map(tool => {
+              const status = toolsStatus.tools[tool.id];
+              const isInstalled = Boolean(status?.installed);
+
+              return (
+                <div
+                  key={tool.id}
+                  className={`p-3.5 rounded-xl border font-mono text-xs space-y-1.5 transition-all ${
+                    isInstalled
+                      ? 'bg-emerald-950/20 border-emerald-800/60'
+                      : 'bg-[#141414] border-[#222222]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-white text-xs">{tool.name}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                      isInstalled
+                        ? 'bg-emerald-900/80 text-emerald-300 border border-emerald-700'
+                        : 'bg-amber-950/80 text-amber-300 border border-amber-800'
+                    }`}>
+                      {isInstalled ? 'READY' : 'NOT FOUND'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 font-sans">{tool.role}</p>
+                  
+                  {isInstalled ? (
+                    <div className="pt-1 text-[10px] text-gray-500 truncate" title={status?.path}>
+                      Path: {status?.path}
+                    </div>
+                  ) : (
+                    <div className="pt-1 text-[10px] text-amber-400/80">
+                      Install: <code className="bg-black/60 px-1 py-0.5 rounded text-gray-300">{tool.installCmd}</code>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 bg-[#141414] border border-[#222222] rounded-xl text-xs font-mono text-gray-400">
+            Click 'Rescan Tools' to query system tool availability on the Linux host.
+          </div>
+        )}
+
+        <div className="p-3 bg-[#161616] border border-[#222222] rounded-xl flex items-center justify-between text-xs text-gray-400">
+          <span>Linux 1-Command Automated Toolchain Installer:</span>
+          <code className="bg-black px-2.5 py-1 rounded text-emerald-400 font-mono text-xs border border-[#2A2A2A]">
+            chmod +x setup_linux.sh && ./setup_linux.sh
+          </code>
+        </div>
+      </div>
 
       {/* Grid: 2 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -166,7 +287,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {[
               { key: 'enableSAST', label: 'Static Application Security Testing (SAST)', desc: 'SQLi, RCE, XSS, and broken access controls.' },
               { key: 'enableSecrets', label: 'Secret & API Credential Scanner', desc: 'AWS Keys, Stripe live secrets, JWT tokens, DB URIs.' },
-              { key: 'enableSCA', label: 'Software Composition Analysis (SCA)', desc: 'Known CVE audit on package.json & requirements.txt.' },
+              { key: 'enableSCA', label: 'Software Composition Analysis (SCA)', desc: 'Live OSV API and CVE audit on package.json & requirements.txt.' },
               { key: 'enableConfig', label: 'Cloud Config & Infrastructure as Code', desc: 'Dockerfile root execution, Kubernetes privileges, CORS.' },
               { key: 'enableWebRecon', label: 'Website Reconnaissance & Discovery', desc: 'DNS, SSL/TLS, GraphQL schemas, exposed routes, API portals.' },
               { key: 'enableSecurityHeaders', label: 'HTTP Security Headers & Cookies', desc: 'CSP, HSTS, X-Frame-Options, SameSite/HttpOnly cookie audit.' },

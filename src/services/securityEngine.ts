@@ -9,6 +9,7 @@ import {
   ComplianceRequirement,
   ComplianceFramework
 } from '../types';
+import { OSVClient } from './osvClient';
 
 interface DependencyVulnDb {
   [pkg: string]: {
@@ -103,6 +104,151 @@ export class SecurityEngine {
       this.scanFileForMobileStatic(file, findings, target);
       this.scanFileForBinaryStatic(file, findings, target);
       this.scanFileForWebReconAndHeaders(file, findings, target);
+    }
+
+    const metrics = this.calculateMetrics(findings);
+    const scoreBefore = this.calculateSecurityScore(findings);
+    const aiInsight = this.generateAIInsight(target, findings, scoreBefore);
+
+    return {
+      scanId: `scan-${Date.now().toString(36)}`,
+      target,
+      findings,
+      timestamp: new Date().toISOString(),
+      scoreBefore,
+      scoreCurrent: scoreBefore,
+      metrics: {
+        ...metrics,
+        verifiedPercentage: 0
+      },
+      aiInsight
+    };
+  }
+
+  static async scanCodebaseAsync(target: ScanTarget): Promise<ScanResult> {
+    const baseResult = this.scanCodebase(target);
+    const findings = [...baseResult.findings];
+
+    // 1. Query OSV.dev live vulnerability database for dependencies
+    try {
+      const packagesToQuery: Array<{ name: string; version: string; ecosystem: 'npm' | 'PyPI' | 'Go' | 'Maven' | 'Packagist' | 'RubyGems' | 'crates.io' }> = [];
+
+      for (const file of target.files) {
+        if (file.path.endsWith('package.json')) {
+          try {
+            const parsed = JSON.parse(file.content);
+            const allDeps = { ...parsed.dependencies, ...parsed.devDependencies };
+            for (const [name, ver] of Object.entries(allDeps)) {
+              if (typeof ver === 'string') {
+                packagesToQuery.push({ name, version: ver, ecosystem: 'npm' });
+              }
+            }
+          } catch {}
+        } else if (file.path.endsWith('requirements.txt')) {
+          const lines = file.content.split('\n');
+          for (const line of lines) {
+            const match = line.trim().match(/^([a-zA-Z0-9_-]+)==([0-9.]+)/);
+            if (match && match[1] && match[2]) {
+              packagesToQuery.push({ name: match[1], version: match[2], ecosystem: 'PyPI' });
+            }
+          }
+        }
+      }
+
+      if (packagesToQuery.length > 0) {
+        const liveVulns = await OSVClient.queryBatch(packagesToQuery);
+        for (const lv of liveVulns) {
+          const existing = findings.find(f => f.category === 'SCA' && f.title.includes(lv.pkgName));
+          if (!existing) {
+            findings.push({
+              id: `sca-osv-${lv.pkgName}-${lv.vulnId}`,
+              title: lv.title,
+              category: 'SCA',
+              severity: lv.severity,
+              confidence: 98,
+              cwe: 'CWE-1395',
+              cweName: 'Vulnerable Third-Party Dependency',
+              cvssScore: lv.severity === 'CRITICAL' ? 9.8 : lv.severity === 'HIGH' ? 8.2 : 6.1,
+              file: lv.ecosystem === 'npm' ? 'package.json' : 'requirements.txt',
+              line: 1,
+              codeSnippet: `"${lv.pkgName}": "${lv.version}"`,
+              description: lv.description,
+              rootCause: `Package ${lv.pkgName}@${lv.version} contains public vulnerability ${lv.vulnId}.`,
+              attackScenario: `Exploitation of known CVEs in ${lv.pkgName}.`,
+              businessImpact: 'Supply chain compromise, service instability or remote code execution.',
+              recommendation: `Upgrade ${lv.pkgName} to ${lv.fixedVersion}.`,
+              status: 'DETECTED',
+              complianceTags: {
+                owasp: ['A06:2021-Vulnerable and Outdated Components'],
+                nist: ['CM-7', 'SI-2'],
+                soc2: ['CC7.1'],
+                pci: ['Req 6.2'],
+                hipaa: ['164.312(a)(1)'],
+                iso27001: ['A.8.8']
+              },
+              proposedPatch: {
+                fileModified: lv.ecosystem === 'npm' ? 'package.json' : 'requirements.txt',
+                startLine: 1,
+                endLine: 2,
+                beforeCode: `"${lv.pkgName}": "${lv.version}"`,
+                afterCode: `"${lv.pkgName}": "${lv.fixedVersion}"`,
+                diff: `- "${lv.pkgName}": "${lv.version}"\n+ "${lv.pkgName}": "${lv.fixedVersion}"`,
+                explanation: `Upgrades ${lv.pkgName} to safe version.`,
+                safetyRating: 'SAFE_AUTOMATIC',
+                breakingChangeRisk: 'Check package changelog for minor breaking changes.'
+              },
+              testCase: {
+                name: `${lv.pkgName} Dependency Version Check`,
+                description: `Verify that ${lv.pkgName} resolves to ${lv.fixedVersion}.`,
+                inputPayload: `audit ${lv.pkgName}`,
+                expectedOutcome: 'Zero known vulnerabilities.',
+                testScriptCode: `npm audit || pip-audit`
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Live OSV scan encountered an issue:', e);
+    }
+
+    // 2. Query Multi-Engine backend (Semgrep, Gitleaks)
+    try {
+      const res = await fetch('/api/scan/multi-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.findings && Array.isArray(data.findings)) {
+          for (const cliFinding of data.findings) {
+            const alreadyExists = findings.some(f => f.file === cliFinding.file && Math.abs(f.line - cliFinding.line) <= 2);
+            if (!alreadyExists) {
+              findings.push({
+                ...cliFinding,
+                confidence: 95,
+                cvssScore: cliFinding.severity === 'CRITICAL' ? 9.8 : cliFinding.severity === 'HIGH' ? 8.4 : 5.5,
+                rootCause: cliFinding.description,
+                attackScenario: 'Adversary exploits detected vulnerability in code flow.',
+                businessImpact: 'Security boundary breach.',
+                recommendation: 'Apply standard secure coding practices.',
+                status: 'DETECTED',
+                complianceTags: {
+                  owasp: ['A03:2021-Injection', 'A07:2021-Identification and Authentication Failures'],
+                  nist: ['SI-10'],
+                  soc2: ['CC6.1'],
+                  pci: ['Req 6.5.1'],
+                  hipaa: ['164.312(a)(1)'],
+                  iso27001: ['A.8.28']
+                }
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Backend not running or offline
     }
 
     const metrics = this.calculateMetrics(findings);

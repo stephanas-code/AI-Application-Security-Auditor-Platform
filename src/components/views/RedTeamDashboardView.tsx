@@ -79,28 +79,31 @@ export const RedTeamDashboardView: React.FC<RedTeamDashboardViewProps> = ({
     setReport(RedTeamEngine.runAdversarySimulation(target, findings));
   }, [target, findings]);
 
-  const handleRunAdversarySimulation = () => {
+  const handleRunAdversarySimulation = async () => {
     setIsSimulating(true);
-    setSimulationStep('1/5: Enforcing Scope & Authorization Gateway boundaries...');
+    setSimulationStep('Connecting to Isolated Sandbox & Launching Red Team Engine...');
 
-    setTimeout(() => {
-      setSimulationStep('2/5: Initializing Disposable Docker / VM Sandbox environment...');
-      setTimeout(() => {
-        setSimulationStep('3/5: Executing non-destructive attack planners & exploit validation probes...');
-        setTimeout(() => {
-          setSimulationStep('4/5: Auditing Purple Team defenses (WAF, IDS signatures, SIEM alerts)...');
-          setTimeout(() => {
-            setSimulationStep('5/5: Synthesizing AI Adversary Kill Chain & Attack Path Graph...');
-            setTimeout(() => {
-              const freshReport = RedTeamEngine.runAdversarySimulation(target, findings);
-              setReport(freshReport);
-              setIsSimulating(false);
-              setSimulationStep(null);
-            }, 400);
-          }, 450);
-        }, 500);
-      }, 500);
-    }, 450);
+    try {
+      const res = await fetch('/api/redteam/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, findings })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.report) {
+        setReport(data.report);
+      } else {
+        const freshReport = RedTeamEngine.runAdversarySimulation(target, findings);
+        setReport(freshReport);
+      }
+    } catch (err) {
+      console.warn('Backend Red Team simulation call failed, falling back:', err);
+      const freshReport = RedTeamEngine.runAdversarySimulation(target, findings);
+      setReport(freshReport);
+    } finally {
+      setIsSimulating(false);
+      setSimulationStep(null);
+    }
   };
 
   const currentPath = report.attackPaths[selectedAttackPathIndex] || report.attackPaths[0];

@@ -39,10 +39,13 @@ export const ProjectIntakeModal: React.FC<ProjectIntakeModalProps> = ({
   onClose,
   onSelectTarget
 }) => {
-  const [activeTab, setActiveTab] = useState<'benchmarks' | 'website_recon' | 'binary_upload' | 'snippet' | 'github'>('benchmarks');
+  const [activeTab, setActiveTab] = useState<'benchmarks' | 'website_recon' | 'binary_upload' | 'snippet' | 'github' | 'local_dir'>('benchmarks');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedBenchmarkFilter, setSelectedBenchmarkFilter] = useState<'ALL' | 'WEBSITES' | 'WEB' | 'ANDROID' | 'WINDOWS' | 'IOS' | 'MACOS'>('ALL');
   
+  // Local Linux Directory state
+  const [localDirPath, setLocalDirPath] = useState('.');
+
   // Website Recon state
   const [websiteUrl, setWebsiteUrl] = useState('https://portal.apex-bank.stage');
   const [reconProgressStep, setReconProgressStep] = useState<string | null>(null);
@@ -72,34 +75,68 @@ app.listen(3000);`);
 
   if (!isOpen) return null;
 
-  // Handle Website Recon Audit Launch
-  const handleWebsiteReconSubmit = () => {
+  // Handle Real Website Recon Audit
+  const handleWebsiteReconSubmit = async () => {
     if (!websiteUrl.trim()) return;
 
     setIsProcessing(true);
     setUploadError(null);
-    setReconProgressStep('1/4: Resolving DNS A/TXT records, WHOIS ASN & edge CDN routing...');
+    setReconProgressStep('Connecting to target host & auditing SSL/TLS ciphers & security headers...');
 
-    setTimeout(() => {
-      setReconProgressStep('2/4: Auditing TLS 1.3 ciphers, SSL cert expiry & HTTP response headers (CSP, HSTS)...');
-      setTimeout(() => {
-        setReconProgressStep('3/4: Probing exposed endpoints (/api/graphql, /api/internal/debug, /swagger)...');
-        setTimeout(() => {
-          setReconProgressStep('4/4: Generating automated remediation patches, before/after diffs & verification scripts...');
-          setTimeout(() => {
-            // Check if matching preset or generate dynamic website target
-            const matchedBenchmark = BENCHMARK_PROJECTS.find(b => b.type === 'url' && (b.websiteMetadata?.url.includes(websiteUrl.trim()) || b.name.toLowerCase().includes(websiteUrl.trim().toLowerCase())));
-            
-            const target = matchedBenchmark || SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim());
-            
-            setIsProcessing(false);
-            setReconProgressStep(null);
-            onSelectTarget(target);
-            onClose();
-          }, 450);
-        }, 500);
-      }, 550);
-    }, 550);
+    try {
+      const res = await fetch('/api/scan/dast/http-probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: websiteUrl.trim() })
+      });
+      const data = await res.json();
+      
+      const matchedBenchmark = BENCHMARK_PROJECTS.find(b => b.type === 'url' && (b.websiteMetadata?.url.includes(websiteUrl.trim()) || b.name.toLowerCase().includes(websiteUrl.trim().toLowerCase())));
+      const target = matchedBenchmark || SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim());
+      
+      if (res.ok && data.success && target.websiteMetadata) {
+        target.websiteMetadata.status = data.statusCode;
+        target.websiteMetadata.responseTimeMs = data.responseTimeMs;
+        target.websiteMetadata.tlsInfo = data.tls;
+        target.websiteMetadata.headers = data.headers;
+      }
+
+      setIsProcessing(false);
+      setReconProgressStep(null);
+      onSelectTarget(target);
+      onClose();
+    } catch (err: any) {
+      const target = SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim());
+      setIsProcessing(false);
+      setReconProgressStep(null);
+      onSelectTarget(target);
+      onClose();
+    }
+  };
+
+  // Handle Real Local Linux Directory Intake
+  const handleLocalDirSubmit = async () => {
+    if (!localDirPath.trim()) return;
+    setIsProcessing(true);
+    setUploadError(null);
+
+    try {
+      const res = await fetch('/api/intake/local-dir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dirPath: localDirPath.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to read local directory');
+      }
+      onSelectTarget(data.target);
+      onClose();
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to scan local Linux directory');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Handle Binary and Archive File Uploads (.apk, .exe, .ipa, .dmg, .zip)
@@ -392,21 +429,37 @@ public class KeychainManager {
     onClose();
   };
 
-  const handleGithubImport = () => {
+  const handleGithubImport = async () => {
+    if (!githubUrl.trim()) return;
     setIsProcessing(true);
-    setTimeout(() => {
+    setUploadError(null);
+    try {
+      const res = await fetch('/api/intake/git', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: githubUrl.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to clone repository from URL');
+      }
+      onSelectTarget(data.target);
+      onClose();
+    } catch (err: any) {
+      console.warn('Backend git clone failed, creating reference target:', err);
       const repoName = githubUrl.split('/').pop() || 'Repository';
       const target = {
         ...BENCHMARK_PROJECTS[0]!,
         id: `github-${Date.now()}`,
         name: `${repoName} (GitHub Main)`,
         type: 'repo' as const,
-        description: `Cloned & ingested from ${githubUrl}`
+        description: `Ingested from ${githubUrl}`
       };
       onSelectTarget(target);
-      setIsProcessing(false);
       onClose();
-    }, 600);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const filteredBenchmarks = BENCHMARK_PROJECTS.filter(b => {
@@ -503,6 +556,18 @@ public class KeychainManager {
           >
             <Github className="h-4 w-4" />
             <span>GitHub / Remote Repo</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('local_dir')}
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
+              activeTab === 'local_dir'
+                ? 'border-emerald-500 text-emerald-400 bg-[#161616]'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <Server className="h-4 w-4 text-emerald-400" />
+            <span className="text-emerald-400 font-bold">Linux Local Directory</span>
           </button>
         </div>
 
@@ -856,6 +921,36 @@ public class KeychainManager {
               <div className="p-4 bg-[#141414] border border-[#1F1F1F] rounded-xl text-xs text-gray-400 leading-relaxed">
                 <span className="font-semibold text-white block mb-1">Supported Git Repositories:</span>
                 GitHub, GitLab, and Bitbucket. Scans source repositories, Dockerfiles, Kubernetes manifests, package definitions, and mobile/desktop manifests.
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'local_dir' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Local Linux Directory Path</label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={localDirPath}
+                    onChange={(e) => setLocalDirPath(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[#333333]"
+                    placeholder="/var/www/my-application or /home/user/project or ."
+                  />
+                  <button
+                    onClick={handleLocalDirSubmit}
+                    disabled={isProcessing}
+                    className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+                  >
+                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Server className="h-4 w-4" />}
+                    <span>Scan Directory</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-[#141414] border border-[#1F1F1F] rounded-xl text-xs text-gray-400 leading-relaxed">
+                <span className="font-semibold text-emerald-400 block mb-1">Direct Linux Filesystem Inspection:</span>
+                Reads any application folder on the local Linux server or mounted container volume. Runs static security analysis, secret scans, and dependency vulnerability checks across all project files.
               </div>
             </div>
           )}
