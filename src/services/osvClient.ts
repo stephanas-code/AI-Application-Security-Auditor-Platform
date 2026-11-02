@@ -53,7 +53,8 @@ export class OSVClient {
       const res = await fetch(this.OSV_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries })
+        body: JSON.stringify({ queries }),
+        signal: AbortSignal.timeout(3000)
       });
 
       if (!res.ok) {

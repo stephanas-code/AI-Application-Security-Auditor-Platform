@@ -1,10 +1,10 @@
-export type VulnerabilityCategory = 
-  | 'SAST' 
-  | 'SCA' 
-  | 'SECRETS' 
-  | 'CONFIG' 
-  | 'DAST' 
-  | 'MOBILE_STATIC' 
+export type VulnerabilityCategory =
+  | 'SAST'
+  | 'SCA'
+  | 'SECRETS'
+  | 'CONFIG'
+  | 'DAST'
+  | 'MOBILE_STATIC'
   | 'BINARY_STATIC'
   | 'WEB_RECON'
   | 'SECURITY_HEADERS'
@@ -16,18 +16,18 @@ export type FindingCategory = VulnerabilityCategory;
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
 export type SeverityLevel = Severity;
 
-export type NavigationTab = 'overview' | 'scans' | 'redteam' | 'remediation' | 'compliance' | 'threat_intel' | 'datasets' | 'settings';
+export type NavigationTab = 'overview' | 'scans' | 'tools' | 'redteam' | 'remediation' | 'compliance' | 'threat_intel' | 'datasets' | 'settings';
 
 export type TargetPlatform = 'web' | 'android' | 'ios' | 'windows' | 'macos' | 'cloud';
 
-export type FindingStatus = 
-  | 'DETECTED' 
-  | 'PATCH_PENDING' 
-  | 'PATCH_APPLIED' 
-  | 'TESTING' 
-  | 'VERIFIED_RESOLVED' 
-  | 'UNRESOLVED' 
-  | 'FALSE_POSITIVE' 
+export type FindingStatus =
+  | 'DETECTED'
+  | 'PATCH_PENDING'
+  | 'PATCH_APPLIED'
+  | 'TESTING'
+  | 'VERIFIED_RESOLVED'
+  | 'UNRESOLVED'
+  | 'FALSE_POSITIVE'
   | 'IGNORED';
 
 export interface ProposedPatch {
@@ -58,6 +58,8 @@ export interface VulnerabilityFinding {
   confidence: number; // 0 - 100%
   cwe: string; // e.g., 'CWE-89'
   cweName: string; // e.g., 'Improper Neutralization of Special Elements used in an SQL Command'
+  cve?: string;
+  cveList?: string[];
   cvssScore: number; // e.g. 9.8
   file: string;
   line: number;
@@ -114,6 +116,11 @@ export interface DiscoveredEndpoint {
   status: number;
   exposureType: 'PUBLIC_API' | 'SENSITIVE_DEBUG' | 'ADMIN_PORTAL' | 'GRAPHQL' | 'DOCS';
   riskLevel: Severity;
+  findingNote?: string;
+  cves?: string[];
+  terminalCmd?: string;
+  terminalOutput?: string;
+  authRequired?: boolean;
 }
 
 export interface DnsRecordAudit {
@@ -266,10 +273,10 @@ export interface PlatformSettings {
 // RED TEAM & ADVERSARY SIMULATION SUBSYSTEM TYPES
 // -------------------------------------------------------------
 
-export type ExploitStatus = 
-  | 'CONFIRMED_EXPLOITABLE' 
-  | 'POTENTIALLY_EXPLOITABLE' 
-  | 'NOT_EXPLOITABLE' 
+export type ExploitStatus =
+  | 'CONFIRMED_EXPLOITABLE'
+  | 'POTENTIALLY_EXPLOITABLE'
+  | 'NOT_EXPLOITABLE'
   | 'SAFE_BLOCKED';
 
 export interface ScopeAuthorizationConfig {
@@ -363,7 +370,7 @@ export interface PurpleTeamDefenseAudit {
   techniqueMITRE: string;
   targetService: string;
   simulatedAttackOutcome: 'ATTACK_SUCCESSFUL' | 'ATTACK_BLOCKED' | 'EXPLOIT_CONFIRMED';
-  
+
   // Blue Team Defense Controls
   wafDetection: {
     status: 'DETECTED_AND_BLOCKED' | 'DETECTED_ONLY' | 'NOT_DETECTED';
@@ -381,7 +388,7 @@ export interface PurpleTeamDefenseAudit {
   siemAlertGenerated: boolean;
   alertPriority?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'NONE';
   detectionTimeSeconds: number; // e.g. 1.8s
-  
+
   // Blue Team Evaluation & Defense Gap
   defenseScore: number; // 0 - 100
   defenseGapAnalysis: string;
@@ -407,4 +414,25 @@ export interface RedTeamSimulationReport {
     criticalVulnerabilityChain: string;
     defensiveHardeningActionItems: string[];
   };
+}
+
+
+export interface ToolVerificationItem {
+  id: string;
+  name: string;
+  binary: string;
+  category: 'SAST' | 'SCA' | 'SECRETS' | 'DAST' | 'BINARY' | 'RUNTIME' | 'THREAT_INTEL';
+  description: string;
+  usedBy: string[];
+  installCommand: string;
+  installed: boolean;
+  verifiedUsable: boolean;
+  active: boolean;
+  version?: string;
+  path?: string;
+  resolvedCmd?: string;
+  verificationTest: string;
+  verificationOutput: string;
+  latencyMs: number;
+  checkedAt: string;
 }

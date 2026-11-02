@@ -1,22 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  VulnerabilityFinding, 
-  ScanTarget 
+import {
+  VulnerabilityFinding,
+  ScanTarget
 } from '../types';
-import { 
-  FileCode2, 
-  Folder, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Wand2, 
-  FileCheck
+import {
+  FileCode2,
+  Folder,
+  AlertTriangle,
+  CheckCircle2,
+  Wand2,
+  FileCheck,
+  Eye
 } from 'lucide-react';
 
 interface CodebaseViewerProps {
   target: ScanTarget;
   findings?: VulnerabilityFinding[];
   activeFinding?: VulnerabilityFinding | null;
-  onOpenFinding?: (finding: VulnerabilityFinding) => void;
+  onOpenFinding?: (finding: VulnerabilityFinding, initialTab?: 'explain' | 'recommend' | 'fix') => void;
 }
 
 export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
@@ -48,7 +49,7 @@ export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
 
   return (
     <div className="bg-[#111111] border border-[#1F1F1F] rounded-2xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[750px]">
-      
+
       {/* File Tree Sidebar */}
       <div className="w-full md:w-64 bg-[#0F0F0F] border-b md:border-b-0 md:border-r border-[#1F1F1F] flex flex-col">
         <div className="p-4 border-b border-[#1F1F1F] flex items-center justify-between">
@@ -71,11 +72,10 @@ export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
               <button
                 key={file.path}
                 onClick={() => setSelectedFilePath(file.path)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-all text-left ${
-                  isSelected 
-                    ? 'bg-[#1A1A1A] text-white border border-[#333333] font-bold' 
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-all text-left ${isSelected
+                    ? 'bg-[#1A1A1A] text-white border border-[#333333] font-bold'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-[#141414]'
-                }`}
+                  }`}
               >
                 <div className="flex items-center space-x-2 truncate">
                   <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
@@ -100,7 +100,7 @@ export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
 
       {/* Code Editor View */}
       <div className="flex-1 flex flex-col bg-[#0A0A0A]">
-        
+
         {/* Editor Toolbar */}
         <div className="px-5 py-3 bg-[#161616] border-b border-[#1F1F1F] flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -132,52 +132,57 @@ export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
 
             return (
               <div key={idx} className="group">
-                <div className={`flex items-start py-0.5 px-2 rounded transition-colors ${
-                  findingOnLine && !isResolved ? 'bg-red-950/20 border-l-2 border-[#FF3B30]' :
-                  findingOnLine && isResolved ? 'bg-emerald-950/20 border-l-2 border-emerald-500' :
-                  'hover:bg-[#141414]'
-                }`}>
-                  {/* Line Number */}
-                  <span className={`w-10 text-right pr-4 select-none font-mono text-[11px] ${
-                    findingOnLine && !isResolved ? 'text-[#FF3B30] font-bold' :
-                    findingOnLine && isResolved ? 'text-emerald-400 font-bold' :
-                    'text-gray-700'
+                <div className={`flex items-start py-0.5 px-2 rounded transition-colors ${findingOnLine && !isResolved ? 'bg-red-950/20 border-l-2 border-[#FF3B30]' :
+                    findingOnLine && isResolved ? 'bg-emerald-950/20 border-l-2 border-emerald-500' :
+                      'hover:bg-[#141414]'
                   }`}>
+                  {/* Line Number */}
+                  <span className={`w-10 text-right pr-4 select-none font-mono text-[11px] ${findingOnLine && !isResolved ? 'text-[#FF3B30] font-bold' :
+                      findingOnLine && isResolved ? 'text-emerald-400 font-bold' :
+                        'text-gray-700'
+                    }`}>
                     {lineNum}
                   </span>
 
                   {/* Code Line */}
-                  <span className={`flex-1 whitespace-pre overflow-x-auto ${
-                    findingOnLine && !isResolved ? 'text-red-300' :
-                    findingOnLine && isResolved ? 'text-emerald-300' :
-                    'text-gray-300'
-                  }`}>
+                  <span className={`flex-1 whitespace-pre overflow-x-auto ${findingOnLine && !isResolved ? 'text-red-300' :
+                      findingOnLine && isResolved ? 'text-emerald-300' :
+                        'text-gray-300'
+                    }`}>
                     {lineText || ' '}
                   </span>
 
-                  {/* Inline Fix Action */}
+                  {/* Inline View More & Fix Actions */}
                   {findingOnLine && onOpenFinding && (
-                    <button
-                      onClick={() => onOpenFinding(findingOnLine)}
-                      className={`ml-2 px-2.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider flex items-center space-x-1 transition-all ${
-                        isResolved 
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
-                          : 'bg-[#FF3B30] hover:bg-[#D32F2F] text-black shadow-sm'
-                      }`}
-                    >
-                      {isResolved ? <FileCheck className="h-3 w-3" /> : <Wand2 className="h-3 w-3 text-black" />}
-                      <span>{isResolved ? 'Verified Clean' : 'Remediate'}</span>
-                    </button>
+                    <div className="ml-2 flex items-center space-x-1.5 shrink-0">
+                      <button
+                        onClick={() => onOpenFinding(findingOnLine, 'explain')}
+                        className="px-2.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider flex items-center space-x-1 bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 transition-all cursor-pointer"
+                      >
+                        <Eye className="h-3 w-3" />
+                        <span>View More</span>
+                      </button>
+
+                      <button
+                        onClick={() => onOpenFinding(findingOnLine, 'fix')}
+                        className={`px-2.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer ${isResolved
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                            : 'bg-[#FF3B30] hover:bg-[#D32F2F] text-black shadow-sm'
+                          }`}
+                      >
+                        {isResolved ? <FileCheck className="h-3 w-3" /> : <Wand2 className="h-3 w-3 text-black" />}
+                        <span>{isResolved ? 'Verified Clean' : 'Remediate'}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 {/* Inline Finding Alert Card */}
                 {findingOnLine && (
-                  <div className={`my-1.5 mx-10 p-3 rounded-lg border font-sans text-xs flex items-start justify-between ${
-                    isResolved 
+                  <div className={`my-1.5 mx-10 p-3.5 rounded-lg border font-sans text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isResolved
                       ? 'bg-[#111111] border-emerald-900/60 text-emerald-300'
                       : 'bg-[#141414] border-l-4 border-l-[#FF3B30] border-[#1F1F1F] text-gray-200'
-                  }`}>
+                    }`}>
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-white">[{findingOnLine.severity}] {findingOnLine.title}</span>
@@ -189,12 +194,21 @@ export const CodebaseViewer: React.FC<CodebaseViewerProps> = ({
                     </div>
 
                     {onOpenFinding && (
-                      <button
-                        onClick={() => onOpenFinding(findingOnLine)}
-                        className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider flex-shrink-0 transition-colors ml-3"
-                      >
-                        Remediate →
-                      </button>
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <button
+                          onClick={() => onOpenFinding(findingOnLine, 'explain')}
+                          className="px-3 py-1.5 rounded-lg bg-[#1E1E1E] hover:bg-[#2A2A2A] border border-blue-500/40 text-blue-400 hover:text-blue-300 text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-colors cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>View More</span>
+                        </button>
+                        <button
+                          onClick={() => onOpenFinding(findingOnLine, 'fix')}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          Remediate →
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

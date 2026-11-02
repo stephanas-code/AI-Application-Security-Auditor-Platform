@@ -41,7 +41,8 @@ echo -e "${BLUE}[*] Detected Linux OS: ${DISTRO}${NC}"
 echo -e "\n${BLUE}[1/6] Installing Core Utilities, Nmap & Node/NPM...${NC}"
 if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ] || [ "$DISTRO" = "kali" ]; then
   $SUDO apt-get update -y
-  $SUDO apt-get install -y nmap curl wget git python3 python3-pip python3-venv build-essential jq nodejs npm
+  $SUDO apt-get install -y nmap curl wget git python3 python3-pip python3-venv build-essential jq nodejs npm unzip binutils file openssl
+  $SUDO apt-get install -y bandit gitleaks 2>/dev/null || true
 elif [ "$DISTRO" = "fedora" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "centos" ]; then
   $SUDO dnf install -y nmap curl wget git python3 python3-pip gcc jq nodejs npm
 elif [ "$DISTRO" = "arch" ] || [ "$DISTRO" = "manjaro" ]; then
@@ -144,7 +145,9 @@ echo -e "\n${BLUE}[5/6] Checking Node.js and Installing Platform Packages...${NC
 echo -e "${GREEN}[✓] Node version: $(node -v 2>/dev/null || echo 'N/A')${NC}"
 echo -e "${GREEN}[✓] NPM version: $(npm -v 2>/dev/null || echo 'N/A')${NC}"
 
-npm install
+# Install node_modules on the native Linux filesystem (~/appsec-platform) instead of the
+# slow VirtualBox shared folder (/media/sf_*), which is extremely slow and blocks symlinks.
+bash "$SCRIPT_DIR/start_linux.sh" install
 
 # 6. Verify Tool Availability
 echo -e "\n${BLUE}[6/6] Summary of Installed Security Engine Tools:${NC}"
@@ -164,4 +167,4 @@ done
 echo "--------------------------------------------------------"
 
 echo -e "\n${GREEN}✓ All setup complete!${NC}"
-echo -e "Start the platform using: ${YELLOW}npm run dev${NC} or ${YELLOW}npm start${NC}"
+echo -e "Start the platform using: ${YELLOW}./start_linux.sh${NC}"

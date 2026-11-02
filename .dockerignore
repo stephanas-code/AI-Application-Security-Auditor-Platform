@@ -1,0 +1,9 @@
+node_modules
+venv
+.venv
+dist
+.git
+datasets
+scans
+*.log
+

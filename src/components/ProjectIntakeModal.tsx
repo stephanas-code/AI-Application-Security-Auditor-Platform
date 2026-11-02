@@ -1,72 +1,84 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Upload, 
-  FolderArchive, 
   Github, 
   FileCode, 
   ShieldCheck, 
   AlertTriangle, 
   ArrowRight, 
   Loader2,
-  Smartphone,
-  Monitor,
-  Apple,
-  Terminal,
-  Layers,
-  FileCheck,
   Globe,
   Search,
   Lock,
   Server,
   Zap,
   CheckCircle2,
-  ExternalLink
+  Clock,
+  Trash2,
+  RefreshCw,
+  PlusCircle
 } from 'lucide-react';
 import JSZip from 'jszip';
-import { ScanTarget, ProjectFile, TargetPlatform } from '../types';
-import { BENCHMARK_PROJECTS } from '../data/benchmarkProjects';
+import { ScanTarget, ScanResult, ProjectFile, TargetPlatform } from '../types';
 import { SecurityEngine } from '../services/securityEngine';
+
+export interface SavedScanHistoryItem {
+  target: ScanTarget;
+  scanResult: ScanResult | null;
+  updatedAt: string;
+}
 
 interface ProjectIntakeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectTarget: (target: ScanTarget) => void;
+  scanHistory?: SavedScanHistoryItem[];
+  activeTargetId?: string;
+  onSwitchToSavedTarget?: (entry: SavedScanHistoryItem) => void;
+  onDeleteSavedTarget?: (targetId: string) => void;
 }
 
 export const ProjectIntakeModal: React.FC<ProjectIntakeModalProps> = ({
   isOpen,
   onClose,
-  onSelectTarget
+  onSelectTarget,
+  scanHistory = [],
+  activeTargetId,
+  onSwitchToSavedTarget,
+  onDeleteSavedTarget
 }) => {
-  const [activeTab, setActiveTab] = useState<'benchmarks' | 'website_recon' | 'binary_upload' | 'snippet' | 'github' | 'local_dir'>('benchmarks');
+  const [activeTab, setActiveTab] = useState<'history' | 'website_recon' | 'local_dir' | 'binary_upload' | 'github' | 'snippet'>(
+    scanHistory.length > 0 ? 'history' : 'website_recon'
+  );
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedBenchmarkFilter, setSelectedBenchmarkFilter] = useState<'ALL' | 'WEBSITES' | 'WEB' | 'ANDROID' | 'WINDOWS' | 'IOS' | 'MACOS'>('ALL');
+
+  useEffect(() => {
+    if (isOpen && scanHistory.length > 0) {
+      setActiveTab('history');
+    }
+  }, [isOpen]);
   
-  // Local Linux Directory state
+  // Local Linux / Host Directory state
   const [localDirPath, setLocalDirPath] = useState('.');
 
   // Website Recon state
-  const [websiteUrl, setWebsiteUrl] = useState('https://portal.apex-bank.stage');
+  const [websiteUrl, setWebsiteUrl] = useState('');
   const [reconProgressStep, setReconProgressStep] = useState<string | null>(null);
   
   // Custom code snippet state
-  const [customName, setCustomName] = useState('Custom Mobile / Web App');
+  const [customName, setCustomName] = useState('Custom Application Module');
   const [customPlatform, setCustomPlatform] = useState<TargetPlatform>('web');
   const [customLanguage, setCustomLanguage] = useState('JavaScript / Node.js & Express');
   const [customCode, setCustomCode] = useState(`const express = require('express');
 const app = express();
 
-// User profile query with SQL injection
 app.get('/api/users', async (req, res) => {
   const userId = req.query.id;
   const sql = "SELECT * FROM users WHERE id = " + userId;
   const results = await db.query(sql);
   res.json(results);
 });
-
-// AWS credential leak
-const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
 
 app.listen(3000);`);
 
@@ -81,40 +93,37 @@ app.listen(3000);`);
 
     setIsProcessing(true);
     setUploadError(null);
-    setReconProgressStep('Connecting to target host & auditing SSL/TLS ciphers & security headers...');
+    setReconProgressStep('Resolving live DNS records, inspecting SSL/TLS certificate chain & auditing HTTP security headers...');
 
     try {
-      const res = await fetch('/api/scan/dast/http-probe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: websiteUrl.trim() })
-      });
-      const data = await res.json();
-      
-      const matchedBenchmark = BENCHMARK_PROJECTS.find(b => b.type === 'url' && (b.websiteMetadata?.url.includes(websiteUrl.trim()) || b.name.toLowerCase().includes(websiteUrl.trim().toLowerCase())));
-      const target = matchedBenchmark || SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim());
-      
-      if (res.ok && data.success && target.websiteMetadata) {
-        target.websiteMetadata.status = data.statusCode;
-        target.websiteMetadata.responseTimeMs = data.responseTimeMs;
-        target.websiteMetadata.tlsInfo = data.tls;
-        target.websiteMetadata.headers = data.headers;
+      let probeData: any = undefined;
+      try {
+        const res = await fetch('/api/scan/dast/http-probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: websiteUrl.trim() })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          probeData = data;
+        }
+      } catch {
+        // Fallback to client-side dynamic target builder if probe endpoint is unreachable
       }
 
+      const target = SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim(), probeData);
       setIsProcessing(false);
       setReconProgressStep(null);
       onSelectTarget(target);
       onClose();
     } catch (err: any) {
-      const target = SecurityEngine.createDynamicWebsiteTarget(websiteUrl.trim());
       setIsProcessing(false);
       setReconProgressStep(null);
-      onSelectTarget(target);
-      onClose();
+      setUploadError(err.message || 'Live website probe failed. Verify target URL is reachable.');
     }
   };
 
-  // Handle Real Local Linux Directory Intake
+  // Handle Real Local Linux / Host Directory Intake
   const handleLocalDirSubmit = async () => {
     if (!localDirPath.trim()) return;
     setIsProcessing(true);
@@ -133,13 +142,13 @@ app.listen(3000);`);
       onSelectTarget(data.target);
       onClose();
     } catch (err: any) {
-      setUploadError(err.message || 'Failed to scan local Linux directory');
+      setUploadError(err.message || 'Failed to scan local directory');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle Binary and Archive File Uploads (.apk, .exe, .ipa, .dmg, .zip)
+  // Handle Real Binary and Archive File Uploads (.apk, .exe, .ipa, .dmg, .zip)
   const handleUniversalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -151,201 +160,34 @@ app.listen(3000);`);
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
 
     try {
-      if (ext === 'apk') {
-        // Android APK Intake
-        const baseName = fileName.replace(/\.apk$/i, '');
-        const target: ScanTarget = {
-          id: `apk-${Date.now()}`,
-          name: `${baseName} (Android APK)`,
-          type: 'apk',
-          platform: 'android',
-          language: 'Android / Kotlin & Java Bytecode',
-          description: `Extracted Android package [${(file.size / (1024 * 1024)).toFixed(2)} MB] with manifest permissions and decompiled class bytecode.`,
-          scannedAt: new Date().toISOString(),
-          totalLines: 320,
-          binaryMetadata: {
-            bundleId: `com.app.${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-            versionName: '1.0.0-release',
-            targetSdk: '33',
-            minSdk: '24',
-            signed: true,
-            permissions: ['android.permission.INTERNET', 'android.permission.READ_EXTERNAL_STORAGE']
-          },
-          files: [
-            {
-              path: 'AndroidManifest.xml',
-              language: 'xml',
-              size: 1100,
-              content: `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.app.${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <application
-        android:debuggable="true"
-        android:allowBackup="true"
-        android:usesCleartextTraffic="true">
-        <activity android:name=".MainActivity" android:exported="true" />
-        <receiver android:name=".receivers.SyncReceiver" android:exported="true" />
-    </application>
-</manifest>`
-            },
-            {
-              path: 'src/main/java/com/app/network/TrustAllCerts.java',
-              language: 'java',
-              size: 920,
-              content: `package com.app.network;
-import javax.net.ssl.X509TrustManager;
-import java.security.cert.X509Certificate;
+      if (['apk', 'ipa', 'exe', 'msi', 'dmg', 'pkg', 'elf', 'bin', 'so', 'dll'].includes(ext)) {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binaryStr = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binaryStr += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+        }
+        const base64Data = btoa(binaryStr);
 
-public class TrustAllCerts implements X509TrustManager {
-    public void checkClientTrusted(X509Certificate[] c, String a) {}
-    public void checkServerTrusted(X509Certificate[] c, String a) {}
-    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-}`
-            }
-          ]
-        };
-        onSelectTarget(target);
-        onClose();
-      } else if (ext === 'exe' || ext === 'msi') {
-        // Windows Desktop Binary Intake
-        const baseName = fileName.replace(/\.(exe|msi)$/i, '');
-        const target: ScanTarget = {
-          id: `exe-${Date.now()}`,
-          name: `${baseName} (Windows PE)`,
-          type: 'exe',
-          platform: 'windows',
-          language: 'C++ / Win32 & Native PE32+',
-          description: `Disassembled Windows Executable [${(file.size / (1024 * 1024)).toFixed(2)} MB] with PE header flags, ASLR/DEP state, and DLL import table.`,
-          scannedAt: new Date().toISOString(),
-          totalLines: 210,
-          binaryMetadata: {
-            architecture: 'x86_64 (PE32+)',
-            aslrEnabled: false,
-            depEnabled: false,
-            signed: false
-          },
-          files: [
-            {
-              path: 'win32/service_installer.cpp',
-              language: 'cpp',
-              size: 1200,
-              content: `#include <windows.h>
-void InstallService() {
-    SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
-    const char* binaryPath = "C:\\\\Program Files\\\\${baseName}\\\\service.exe --daemon";
-    CreateServiceA(schSCManager, "${baseName}Daemon", "${baseName} Daemon", SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START, SERVICE_ERROR_NORMAL, binaryPath, NULL, NULL, NULL, NULL, NULL);
-}`
-            },
-            {
-              path: 'win32/dll_loader.cpp',
-              language: 'cpp',
-              size: 850,
-              content: `#include <windows.h>
-void LoadPlugin() {
-    HMODULE hPlugin = LoadLibraryA("CustomTradeStrategy.dll");
-}`
-            }
-          ]
-        };
-        onSelectTarget(target);
-        onClose();
-      } else if (ext === 'ipa') {
-        // iPhone iOS IPA Intake
-        const baseName = fileName.replace(/\.ipa$/i, '');
-        const target: ScanTarget = {
-          id: `ipa-${Date.now()}`,
-          name: `${baseName} (iPhone iOS)`,
-          type: 'ipa',
-          platform: 'ios',
-          language: 'iOS / Swift & Mach-O Bundle',
-          description: `Extracted iOS Payload App Bundle [${(file.size / (1024 * 1024)).toFixed(2)} MB] with Info.plist, code signing entitlements, and Mach-O headers.`,
-          scannedAt: new Date().toISOString(),
-          totalLines: 240,
-          binaryMetadata: {
-            bundleId: `com.ios.${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-            versionName: '1.0.0',
-            hardenedRuntime: false,
-            entitlements: ['get-task-allow']
-          },
-          files: [
-            {
-              path: 'Payload/App.app/Info.plist',
-              language: 'xml',
-              size: 820,
-              content: `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.ios.${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
-</dict>
-</plist>`
-            },
-            {
-              path: 'Security/KeychainManager.swift',
-              language: 'swift',
-              size: 790,
-              content: `import Foundation
-import Security
+        const platform =
+          ext === 'apk' ? 'android' :
+          ext === 'ipa' ? 'ios' :
+          ext === 'exe' || ext === 'msi' || ext === 'dll' ? 'windows' :
+          ext === 'dmg' || ext === 'pkg' ? 'macos' : 'web';
 
-public class KeychainManager {
-    public static func storeSecret(secret: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccessible as String: kSecAttrAccessibleAlways,
-            kSecValueData as String: secret.data(using: .utf8)!
-        ]
-        SecItemAdd(query as CFDictionary, nil)
-    }
-}`
-            }
-          ]
-        };
-        onSelectTarget(target);
-        onClose();
-      } else if (ext === 'dmg' || ext === 'pkg') {
-        // macOS DMG Intake
-        const baseName = fileName.replace(/\.(dmg|pkg)$/i, '');
-        const target: ScanTarget = {
-          id: `dmg-${Date.now()}`,
-          name: `${baseName} (macOS DMG)`,
-          type: 'dmg',
-          platform: 'macos',
-          language: 'macOS / Universal Mach-O Bundle',
-          description: `Mounted Apple Disk Image [${(file.size / (1024 * 1024)).toFixed(2)} MB] with Hardened Runtime verification and code entitlements.`,
-          scannedAt: new Date().toISOString(),
-          totalLines: 190,
-          binaryMetadata: {
-            bundleId: `com.mac.${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-            hardenedRuntime: false,
-            entitlements: ['com.apple.security.cs.allow-unsigned-executable-memory']
-          },
-          files: [
-            {
-              path: `${baseName}.entitlements`,
-              language: 'xml',
-              size: 650,
-              content: `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-</dict>
-</plist>`
-            }
-          ]
-        };
-        onSelectTarget(target);
+        const res = await fetch('/api/intake/binary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName, base64Data, platform })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || `Binary analysis failed for ${fileName}`);
+        }
+        onSelectTarget(data.target);
         onClose();
       } else {
-        // Assume ZIP Archive or source tree
         const zip = new JSZip();
         const loadedZip = await zip.loadAsync(file);
         const projectFiles: ProjectFile[] = [];
@@ -446,32 +288,11 @@ public class KeychainManager {
       onSelectTarget(data.target);
       onClose();
     } catch (err: any) {
-      console.warn('Backend git clone failed, creating reference target:', err);
-      const repoName = githubUrl.split('/').pop() || 'Repository';
-      const target = {
-        ...BENCHMARK_PROJECTS[0]!,
-        id: `github-${Date.now()}`,
-        name: `${repoName} (GitHub Main)`,
-        type: 'repo' as const,
-        description: `Ingested from ${githubUrl}`
-      };
-      onSelectTarget(target);
-      onClose();
+      setUploadError(err.message || 'Git clone failed. Verify the repository URL is public and reachable.');
     } finally {
       setIsProcessing(false);
     }
   };
-
-  const filteredBenchmarks = BENCHMARK_PROJECTS.filter(b => {
-    if (selectedBenchmarkFilter === 'ALL') return true;
-    if (selectedBenchmarkFilter === 'WEBSITES') return b.type === 'url';
-    if (selectedBenchmarkFilter === 'WEB') return b.platform === 'web' && b.type !== 'url';
-    if (selectedBenchmarkFilter === 'ANDROID') return b.platform === 'android';
-    if (selectedBenchmarkFilter === 'WINDOWS') return b.platform === 'windows';
-    if (selectedBenchmarkFilter === 'IOS') return b.platform === 'ios';
-    if (selectedBenchmarkFilter === 'MACOS') return b.platform === 'macos';
-    return true;
-  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
@@ -480,17 +301,17 @@ public class KeychainManager {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1F1F1F] bg-[#161616]">
           <div className="flex items-center space-x-3">
-            <div className="h-9 w-9 rounded-xl bg-[#FF3B30] flex items-center justify-center text-black font-black text-base shadow-sm">
+            <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Application Security & Recon Intake Engine</h2>
-              <p className="text-xs text-gray-500">Supports Live Websites, Web APIs, Android APK, Windows EXE, iPhone IPA, and macOS DMG applications.</p>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Target Intake Engine</h2>
+              <p className="text-xs text-gray-500">Scan Real Local Workspaces, Live Websites, Binary Packages (.apk, .exe, .ipa, .dmg), and Git Repositories.</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1F1F1F] transition-colors"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1F1F1F] transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -499,32 +320,47 @@ public class KeychainManager {
         {/* Tab Navigation */}
         <div className="flex border-b border-[#1F1F1F] bg-[#0F0F0F] px-6 pt-2 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('benchmarks')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
-              activeTab === 'benchmarks'
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'history'
                 ? 'border-blue-500 text-blue-400 bg-[#161616]'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
+                : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            <ShieldCheck className="h-4 w-4" />
-            <span>Benchmark Targets (Websites, APK, EXE, IPA, DMG)</span>
+            <Clock className="h-4 w-4 text-blue-400" />
+            <span className="font-bold">Scanned Websites & Apps</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800/60">
+              {scanHistory.length}
+            </span>
           </button>
 
           <button
             onClick={() => setActiveTab('website_recon')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'website_recon'
                 ? 'border-emerald-500 text-emerald-400 bg-[#161616]'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
             <Globe className="h-4 w-4 text-emerald-400" />
-            <span className="text-emerald-400 font-bold">Live Website Recon & Audit</span>
+            <span className="font-bold">+ New Website URL</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('local_dir')}
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'local_dir'
+                ? 'border-emerald-500 text-emerald-400 bg-[#161616]'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <Server className="h-4 w-4 text-emerald-400" />
+            <span className="font-bold">Local Directory</span>
           </button>
 
           <button
             onClick={() => setActiveTab('binary_upload')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'binary_upload'
                 ? 'border-blue-500 text-blue-400 bg-[#161616]'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
@@ -535,112 +371,206 @@ public class KeychainManager {
           </button>
 
           <button
-            onClick={() => setActiveTab('snippet')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
-              activeTab === 'snippet'
-                ? 'border-blue-500 text-blue-400 bg-[#161616]'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            <FileCode className="h-4 w-4" />
-            <span>Paste Code / Manifest</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('github')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'github'
                 ? 'border-blue-500 text-blue-400 bg-[#161616]'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
             <Github className="h-4 w-4" />
-            <span>GitHub / Remote Repo</span>
+            <span>Git / Remote Repo</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('local_dir')}
-            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap ${
-              activeTab === 'local_dir'
-                ? 'border-emerald-500 text-emerald-400 bg-[#161616]'
+            onClick={() => setActiveTab('snippet')}
+            className={`flex items-center space-x-2 px-4 py-2.5 border-b-2 text-xs font-semibold tracking-tight transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'snippet'
+                ? 'border-blue-500 text-blue-400 bg-[#161616]'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
-            <Server className="h-4 w-4 text-emerald-400" />
-            <span className="text-emerald-400 font-bold">Linux Local Directory</span>
+            <FileCode className="h-4 w-4" />
+            <span>Paste Source Code</span>
           </button>
         </div>
 
         {/* Tab Content */}
         <div className="p-6 overflow-y-auto flex-1 bg-[#0A0A0A]">
-          {activeTab === 'benchmarks' && (
+          {uploadError && (
+            <div className="mb-4 p-3 rounded-xl bg-red-950/40 border border-red-800 text-red-200 text-xs flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
+              <span>{uploadError}</span>
+            </div>
+          )}
+
+          {activeTab === 'history' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-gray-400">
-                  Select a real-world multi-platform test target with verified vulnerability baselines:
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-[#141414] border border-[#1F1F1F]">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <Clock className="h-4 w-4 text-blue-400" />
+                    <span>Previously Scanned Websites & Applications ({scanHistory.length})</span>
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Toggle between your saved websites and apps or launch a scan on a new target.
+                  </p>
                 </div>
-                <div className="flex items-center space-x-1 bg-[#141414] p-1 rounded-lg border border-[#1F1F1F]">
-                  {(['ALL', 'WEBSITES', 'WEB', 'ANDROID', 'WINDOWS', 'IOS', 'MACOS'] as const).map(filter => (
-                    <button
-                      key={filter}
-                      onClick={() => setSelectedBenchmarkFilter(filter)}
-                      className={`px-2.5 py-1 text-[10px] font-mono rounded font-semibold transition-all ${
-                        selectedBenchmarkFilter === filter
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={() => setActiveTab('website_recon')}
+                    className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5" />
+                    <span>Scan New Website</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('binary_upload')}
+                    className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>Upload New App</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                {filteredBenchmarks.map((bench) => (
-                  <div
-                    key={bench.id}
-                    onClick={() => {
-                      onSelectTarget(bench);
-                      onClose();
-                    }}
-                    className="p-4 rounded-xl bg-[#141414] border border-[#1F1F1F] hover:border-[#333333] hover:bg-[#181818] cursor-pointer transition-all group"
+              {scanHistory.length === 0 ? (
+                <div className="p-10 text-center rounded-2xl bg-[#111111] border border-[#1F1F1F] space-y-3">
+                  <Globe className="h-10 w-10 text-gray-600 mx-auto" />
+                  <h4 className="text-sm font-bold text-gray-300">No Scanned Websites or Apps in History Yet</h4>
+                  <p className="text-xs text-gray-500 max-w-md mx-auto">
+                    Any website URL or application binary you scan is automatically saved in the persistent audit database so you can switch back to it anytime.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('website_recon')}
+                    className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider cursor-pointer"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1.5 flex-1 pr-4">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="p-1.5 rounded-md bg-[#1A1A1A] border border-[#2A2A2A]">
-                            {bench.type === 'url' ? <Globe className="h-4 w-4 text-emerald-400" /> :
-                             bench.platform === 'android' ? <Smartphone className="h-4 w-4 text-emerald-400" /> :
-                             bench.platform === 'windows' ? <Monitor className="h-4 w-4 text-blue-400" /> :
-                             bench.platform === 'ios' ? <Apple className="h-4 w-4 text-purple-400" /> :
-                             bench.platform === 'macos' ? <Apple className="h-4 w-4 text-gray-300" /> :
-                             <Terminal className="h-4 w-4 text-yellow-400" />}
+                    <Globe className="h-4 w-4" />
+                    <span>Scan Your First Website URL</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {scanHistory.map((item) => {
+                    const isCurrent = item.target.id === activeTargetId;
+                    const findingsCount = item.scanResult?.findings?.length ?? 0;
+                    const resolvedCount = item.scanResult?.findings?.filter(f => f.status === 'VERIFIED_RESOLVED').length ?? 0;
+                    const score = item.scanResult?.scoreCurrent ?? null;
+
+                    return (
+                      <div
+                        key={item.target.id}
+                        className={`p-4 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                          isCurrent
+                            ? 'bg-blue-950/20 border-blue-500/70 shadow-lg'
+                            : 'bg-[#141414] border-[#1F1F1F] hover:border-[#333333]'
+                        }`}
+                      >
+                        <div className="space-y-1.5 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-blue-950 text-blue-400 border border-blue-800/50">
+                              {item.target.type === 'url' ? 'LIVE WEBSITE' : (item.target.platform || 'WEB')}
+                            </span>
+                            {isCurrent && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                ● ACTIVE TARGET
+                              </span>
+                            )}
+                            {score !== null && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#1C1C1C] text-white border border-[#2C2C2C]">
+                                Score: {score}/100
+                              </span>
+                            )}
+                            <span className="text-[11px] font-mono text-gray-400">
+                              {findingsCount} findings ({resolvedCount} fixed)
+                            </span>
                           </div>
-                          <h3 className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">
-                            {bench.name}
-                          </h3>
-                          <span className="px-2 py-0.5 text-[9px] font-mono rounded bg-black text-gray-300 border border-[#1F1F1F] uppercase">
-                            {bench.type === 'url' ? 'LIVE WEBSITE' : (bench.platform || 'web')}
-                          </span>
+
+                          <h4 className="text-sm font-bold text-white truncate">{item.target.name}</h4>
+                          <p className="text-[11px] font-mono text-gray-500">
+                            Last audited: {new Date(item.updatedAt || item.target.scannedAt).toLocaleString()} • {item.target.files?.length || 0} files/configs
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-400 leading-relaxed">
-                          {bench.description}
-                        </p>
-                        <div className="flex items-center space-x-3 text-[10px] font-mono text-gray-500 pt-1">
-                          <span>{bench.files.length} Files / Configs</span>
-                          <span>•</span>
-                          <span>{bench.totalLines} LOC</span>
-                          <span>•</span>
-                          <span className="text-gray-300">{bench.language}</span>
+
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => {
+                              if (onSwitchToSavedTarget) {
+                                onSwitchToSavedTarget(item);
+                              } else {
+                                onSelectTarget(item.target);
+                              }
+                              onClose();
+                            }}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center space-x-1.5 ${
+                              isCurrent
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white'
+                            }`}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>{isCurrent ? 'Active (Open)' : 'Switch to Target'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              onSelectTarget(item.target);
+                              onClose();
+                            }}
+                            className="px-3 py-2 rounded-xl bg-[#1F1F1F] hover:bg-[#2A2A2A] border border-[#333333] text-gray-300 hover:text-white text-xs font-mono font-semibold transition-all cursor-pointer flex items-center space-x-1"
+                            title="Re-run a fresh vulnerability scan on this target"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            <span>Re-Scan</span>
+                          </button>
+
+                          {onDeleteSavedTarget && (
+                            <button
+                              onClick={() => onDeleteSavedTarget(item.target.id)}
+                              className="p-2 rounded-xl bg-[#1A1A1A] hover:bg-red-950/60 border border-[#2A2A2A] hover:border-red-800 text-gray-400 hover:text-red-400 transition-all cursor-pointer"
+                              title="Remove from saved history"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg bg-[#1A1A1A] group-hover:bg-[#FF3B30] text-gray-400 group-hover:text-black transition-all">
-                        <ArrowRight className="h-4 w-4" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'local_dir' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Host Workspace Directory Path</label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={localDirPath}
+                    onChange={(e) => setLocalDirPath(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[#333333]"
+                    placeholder="Enter directory path (e.g. . for current workspace, /app, or project path)"
+                  />
+                  <button
+                    onClick={handleLocalDirSubmit}
+                    disabled={isProcessing || !localDirPath.trim()}
+                    className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Server className="h-4 w-4" />}
+                    <span>Audit Directory</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-[#141414] border border-[#1F1F1F] rounded-xl text-xs text-gray-400 leading-relaxed space-y-2">
+                <span className="font-semibold text-emerald-400 block">Real-Time Filesystem Security Audit:</span>
+                <p>
+                  Directly inspects your live codebase. Executes native SAST scanners (Semgrep, Bandit), secrets detection (Gitleaks), container/config checks (Trivy), and dependency vulnerability auditing (pip-audit, npm audit, OSV.dev).
+                </p>
               </div>
             </div>
           )}
@@ -653,9 +583,9 @@ public class KeychainManager {
                     <Globe className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Live Website & Web API Reconnaissance Audit</h3>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Live Website & Web API Reconnaissance</h3>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Performs non-intrusive DNS security analysis, SSL/TLS ciphers, HTTP security header grading, cookie audits, and discovers exposed API routes & GraphQL schemas.
+                      Audits live DNS records, TLS certificates & ciphers, HTTP security response headers, cookies, and discovers exposed API routes in real-time.
                     </p>
                   </div>
                 </div>
@@ -663,7 +593,7 @@ public class KeychainManager {
                 <div className="space-y-3 pt-2">
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 mb-1.5 font-mono uppercase text-[11px]">
-                      Target Website / API URL
+                      Target URL
                     </label>
                     <div className="flex space-x-2">
                       <div className="relative flex-1">
@@ -672,40 +602,18 @@ public class KeychainManager {
                           type="text"
                           value={websiteUrl}
                           onChange={(e) => setWebsiteUrl(e.target.value)}
-                          placeholder="https://app.example.com or api.target.io"
+                          placeholder="https://example.com or https://api.yourdomain.com"
                           className="w-full pl-10 pr-4 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-emerald-500 transition-colors"
                         />
                       </div>
                       <button
                         onClick={handleWebsiteReconSubmit}
                         disabled={isProcessing || !websiteUrl.trim()}
-                        className="flex items-center space-x-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg disabled:opacity-50"
+                        className="flex items-center space-x-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg disabled:opacity-50 cursor-pointer"
                       >
                         {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                         <span>Audit Website</span>
                       </button>
-                    </div>
-                  </div>
-
-                  {/* Preset targets for 1-click test */}
-                  <div>
-                    <span className="text-[10px] font-mono text-gray-500 block mb-1.5">QUICK PRESET RECON TARGETS:</span>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: 'Apex Global Bank Portal (Live Staging)', url: 'https://portal.apex-bank.stage' },
-                        { label: 'OmniStore Checkout API (Live Production)', url: 'https://checkout.omnistore-api.net' },
-                        { label: 'Enterprise Cloud SaaS Portal', url: 'https://cloud-saas.enterprise-core.io' }
-                      ].map(preset => (
-                        <button
-                          key={preset.url}
-                          type="button"
-                          onClick={() => setWebsiteUrl(preset.url)}
-                          className="text-[11px] font-mono px-3 py-1.5 rounded-lg bg-[#161616] hover:bg-[#222222] text-gray-300 hover:text-emerald-400 border border-[#222222] transition-colors flex items-center space-x-1.5"
-                        >
-                          <Zap className="h-3 w-3 text-emerald-400" />
-                          <span>{preset.label}</span>
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -723,35 +631,32 @@ public class KeychainManager {
                 )}
               </div>
 
-              {/* Recon capabilities overview */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3.5 bg-[#141414] border border-[#1F1F1F] rounded-xl space-y-1.5">
                   <div className="flex items-center space-x-2 text-xs font-bold text-white">
                     <Lock className="h-3.5 w-3.5 text-blue-400" />
-                    <span>Security Headers & SSL</span>
+                    <span>Headers & TLS</span>
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Audits Content-Security-Policy (CSP), Strict-Transport-Security (HSTS), X-Frame-Options, TLS 1.3 ciphers, and certificate chains.
+                  <p className="text-[11px] text-gray-500">
+                    Live grading of CSP, HSTS, X-Frame-Options, CORS, and SSL/TLS cipher suites.
                   </p>
                 </div>
-
                 <div className="p-3.5 bg-[#141414] border border-[#1F1F1F] rounded-xl space-y-1.5">
                   <div className="flex items-center space-x-2 text-xs font-bold text-white">
-                    <Server className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Endpoint & API Discovery</span>
+                    <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Endpoint Discovery</span>
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Discovers exposed GraphQL introspection sinks, internal telemetry proxy routes, unauthenticated Swagger/OpenAPI docs, and admin consoles.
+                  <p className="text-[11px] text-gray-500">
+                    Detects robots.txt, sitemaps, Swagger UI, GraphQL endpoints, and health probes.
                   </p>
                 </div>
-
                 <div className="p-3.5 bg-[#141414] border border-[#1F1F1F] rounded-xl space-y-1.5">
                   <div className="flex items-center space-x-2 text-xs font-bold text-white">
-                    <ShieldCheck className="h-3.5 w-3.5 text-[#FF3B30]" />
-                    <span>DNS & Cookie Hardening</span>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" />
+                    <span>Active DAST Prober</span>
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Validates DMARC/SPF email spoofing posture, WAF edge presence, and checks cookies for missing Secure, HttpOnly, and SameSite flags.
+                  <p className="text-[11px] text-gray-500">
+                    Fuzz live endpoints with non-destructive SQLi and XSS payloads to test runtime defenses.
                   </p>
                 </div>
               </div>
@@ -760,137 +665,34 @@ public class KeychainManager {
 
           {activeTab === 'binary_upload' && (
             <div className="space-y-4">
-              <div className="border-2 border-dashed border-[#1F1F1F] hover:border-[#333333] rounded-2xl p-8 text-center bg-[#0D0D0D] transition-colors">
-                <div className="flex justify-center space-x-3 mb-4">
-                  <div className="p-3 rounded-xl bg-[#161616] border border-[#222222] text-emerald-400">
-                    <Smartphone className="h-5 w-5" />
-                    <span className="text-[9px] font-mono block mt-1">.APK</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-[#161616] border border-[#222222] text-blue-400">
-                    <Monitor className="h-5 w-5" />
-                    <span className="text-[9px] font-mono block mt-1">.EXE</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-[#161616] border border-[#222222] text-purple-400">
-                    <Apple className="h-5 w-5" />
-                    <span className="text-[9px] font-mono block mt-1">.IPA</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-[#161616] border border-[#222222] text-gray-300">
-                    <Apple className="h-5 w-5" />
-                    <span className="text-[9px] font-mono block mt-1">.DMG</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-[#161616] border border-[#222222] text-amber-400">
-                    <FolderArchive className="h-5 w-5" />
-                    <span className="text-[9px] font-mono block mt-1">.ZIP</span>
-                  </div>
-                </div>
-
-                <h4 className="text-sm font-bold text-white uppercase tracking-wider">Universal Binary & Source Package Intake</h4>
-                <p className="text-xs text-gray-400 mt-1 max-w-lg mx-auto leading-relaxed">
-                  Upload mobile packages (<span className="text-emerald-400 font-mono">.apk</span>, <span className="text-purple-400 font-mono">.ipa</span>), desktop binaries (<span className="text-blue-400 font-mono">.exe</span>, <span className="text-gray-300 font-mono">.dmg</span>), or source code archives (<span className="text-amber-400 font-mono">.zip</span>).
-                </p>
-
-                <div className="mt-5">
-                  <label className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider cursor-pointer shadow-lg transition-all">
-                    <Upload className="h-4 w-4" />
-                    <span>Select File to Ingest & Scan</span>
-                    <input
-                      type="file"
-                      accept=".apk,.exe,.msi,.ipa,.dmg,.pkg,.zip,.tar.gz"
-                      onChange={handleUniversalUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {isProcessing && (
-                  <div className="flex items-center justify-center space-x-2 mt-5 text-xs text-blue-400 bg-blue-950/30 border border-blue-900/50 p-2.5 rounded-xl max-w-sm mx-auto">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Decompiling, parsing binary headers & extracting manifests...</span>
-                  </div>
-                )}
-
-                {uploadError && (
-                  <div className="mt-4 text-xs text-red-400 flex items-center justify-center space-x-1.5 bg-red-950/30 border border-red-900/50 p-2.5 rounded-xl max-w-md mx-auto">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>{uploadError}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs text-gray-400 font-mono">
-                <div className="p-3 bg-[#141414] border border-[#1F1F1F] rounded-xl">
-                  <span className="text-white font-bold block mb-1">Mobile Analysis Pipeline</span>
-                  Inspects AndroidManifest.xml, TrustManager, cleartext HTTP, exported IPC components, ATS configuration, and iOS Keychain security.
-                </div>
-                <div className="p-3 bg-[#141414] border border-[#1F1F1F] rounded-xl">
-                  <span className="text-white font-bold block mb-1">Desktop Binary Pipeline</span>
-                  Evaluates PE/Mach-O headers, ASLR/DEP flags, unquoted service paths, relative DLL hijacking, and Hardened Runtime entitlements.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'snippet' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Target Name</label>
-                  <input
-                    type="text"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    className="w-full px-3 py-2 bg-black border border-[#1F1F1F] rounded-lg text-xs text-white focus:outline-none focus:border-[#333333]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Platform</label>
-                  <select
-                    value={customPlatform}
-                    onChange={(e) => setCustomPlatform(e.target.value as TargetPlatform)}
-                    className="w-full px-3 py-2 bg-black border border-[#1F1F1F] rounded-lg text-xs text-white focus:outline-none focus:border-[#333333]"
-                  >
-                    <option value="web">Web & Cloud API</option>
-                    <option value="android">Android APK</option>
-                    <option value="windows">Windows Desktop EXE</option>
-                    <option value="ios">iPhone iOS IPA</option>
-                    <option value="macos">macOS Desktop DMG</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Language / Format</label>
-                  <select
-                    value={customLanguage}
-                    onChange={(e) => setCustomLanguage(e.target.value)}
-                    className="w-full px-3 py-2 bg-black border border-[#1F1F1F] rounded-lg text-xs text-white focus:outline-none focus:border-[#333333]"
-                  >
-                    <option>JavaScript / Node.js & Express</option>
-                    <option>Python / Flask & Django</option>
-                    <option>Android XML / Java</option>
-                    <option>Swift / iOS Plist</option>
-                    <option>C++ / Win32 Native</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Source Code / Manifest / Config</label>
-                <textarea
-                  value={customCode}
-                  onChange={(e) => setCustomCode(e.target.value)}
-                  rows={9}
-                  className="w-full p-3 bg-black border border-[#1F1F1F] rounded-xl font-mono text-xs text-gray-300 focus:outline-none focus:border-[#333333]"
-                  placeholder="// Paste your code or manifest XML here..."
+              <div className="border-2 border-dashed border-[#222222] hover:border-blue-500 rounded-2xl p-10 text-center transition-colors bg-[#0D0D0D] relative group">
+                <input
+                  type="file"
+                  onChange={handleUniversalUpload}
+                  accept=".apk,.exe,.msi,.ipa,.dmg,.pkg,.zip,.elf,.bin,.so,.dll"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={isProcessing}
                 />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  onClick={handleCustomSnippetSubmit}
-                  className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-lg"
-                >
-                  <span>Start Audit</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex flex-col items-center space-y-3">
+                  <div className="p-4 rounded-2xl bg-[#141414] group-hover:bg-blue-950/40 border border-[#1F1F1F] group-hover:border-blue-800 transition-colors">
+                    {isProcessing ? (
+                      <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-gray-400 group-hover:text-blue-400" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">
+                      {isProcessing ? 'Analyzing Binary Package...' : 'Drop Binary or Package Here to Audit'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supports Android (.apk), Windows (.exe, .msi), iOS (.ipa), macOS (.dmg), and ZIP archives
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-blue-400 bg-blue-950/40 border border-blue-900/60 px-3 py-1 rounded-full">
+                    Real SHA-256 Digest • Magic Header Identification • String Extraction
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -904,15 +706,15 @@ public class KeychainManager {
                     type="text"
                     value={githubUrl}
                     onChange={(e) => setGithubUrl(e.target.value)}
-                    className="flex-1 px-3.5 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white focus:outline-none focus:border-[#333333]"
+                    className="flex-1 px-3.5 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[#333333]"
                     placeholder="https://github.com/organization/project"
                   />
                   <button
                     onClick={handleGithubImport}
-                    disabled={isProcessing}
-                    className="flex items-center space-x-2 px-5 py-2.5 bg-[#FF3B30] hover:bg-[#D32F2F] text-black rounded-xl text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-50"
+                    disabled={isProcessing || !githubUrl.trim()}
+                    className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-black" /> : <Github className="h-4 w-4" />}
+                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
                     <span>Clone & Audit</span>
                   </button>
                 </div>
@@ -920,37 +722,64 @@ public class KeychainManager {
 
               <div className="p-4 bg-[#141414] border border-[#1F1F1F] rounded-xl text-xs text-gray-400 leading-relaxed">
                 <span className="font-semibold text-white block mb-1">Supported Git Repositories:</span>
-                GitHub, GitLab, and Bitbucket. Scans source repositories, Dockerfiles, Kubernetes manifests, package definitions, and mobile/desktop manifests.
+                Clones the repository directly on the Linux host and executes full multi-engine SAST, SCA, and secrets scans across all source files.
               </div>
             </div>
           )}
 
-          {activeTab === 'local_dir' && (
+          {activeTab === 'snippet' && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Local Linux Directory Path</label>
-                <div className="flex space-x-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Module / Snippet Name</label>
                   <input
                     type="text"
-                    value={localDirPath}
-                    onChange={(e) => setLocalDirPath(e.target.value)}
-                    className="flex-1 px-3.5 py-2.5 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[#333333]"
-                    placeholder="/var/www/my-application or /home/user/project or ."
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="w-full px-3 py-2 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white focus:outline-none focus:border-[#333333]"
                   />
-                  <button
-                    onClick={handleLocalDirSubmit}
-                    disabled={isProcessing}
-                    className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Platform & Language</label>
+                  <select
+                    value={customPlatform}
+                    onChange={(e) => {
+                      const p = e.target.value as TargetPlatform;
+                      setCustomPlatform(p);
+                      if (p === 'android') setCustomLanguage('Android / Kotlin & Java');
+                      else if (p === 'ios') setCustomLanguage('iOS / Swift');
+                      else if (p === 'windows') setCustomLanguage('Windows / C++');
+                      else setCustomLanguage('JavaScript / Node.js & Express');
+                    }}
+                    className="w-full px-3 py-2 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white focus:outline-none focus:border-[#333333]"
                   >
-                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Server className="h-4 w-4" />}
-                    <span>Scan Directory</span>
-                  </button>
+                    <option value="web">Web Application / API</option>
+                    <option value="android">Android Mobile (Java/Kotlin)</option>
+                    <option value="ios">iOS Mobile (Swift)</option>
+                    <option value="windows">Windows Desktop (C++)</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="p-4 bg-[#141414] border border-[#1F1F1F] rounded-xl text-xs text-gray-400 leading-relaxed">
-                <span className="font-semibold text-emerald-400 block mb-1">Direct Linux Filesystem Inspection:</span>
-                Reads any application folder on the local Linux server or mounted container volume. Runs static security analysis, secret scans, and dependency vulnerability checks across all project files.
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1 font-mono uppercase text-[10px]">Source Code / Manifest</label>
+                <textarea
+                  value={customCode}
+                  onChange={(e) => setCustomCode(e.target.value)}
+                  rows={8}
+                  className="w-full p-3 bg-black border border-[#1F1F1F] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[#333333]"
+                  placeholder="// Paste your code or manifest XML here..."
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleCustomSnippetSubmit}
+                  className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-lg cursor-pointer"
+                >
+                  <span>Start Audit</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           )}
@@ -960,9 +789,9 @@ public class KeychainManager {
         <div className="px-6 py-3 border-t border-[#1F1F1F] bg-[#161616] flex items-center justify-between text-xs text-gray-600 font-mono">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
-            <span>Deterministic SAST, SCA, Secrets, Mobile & Binary Engine</span>
+            <span>Multi-Engine Real-Time AppSec & DAST Engine</span>
           </div>
-          <span>Safe Sandboxed Execution</span>
+          <span>Native Sandboxed Execution</span>
         </div>
       </div>
     </div>

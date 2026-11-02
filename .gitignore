@@ -33,4 +33,10 @@ yarn-debug.log*
 *.appx
 *.sst
 artifacts/
+# Runtime scan workspaces and local database
+scans/
+data/*
+!data/.gitkeep
+!data/README.md
+
 venv/Lib/site-packages/semgrep/bin/semgrep-core.exe

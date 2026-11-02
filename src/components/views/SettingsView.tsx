@@ -32,6 +32,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [localSettings, setLocalSettings] = useState<PlatformSettings>(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  useEffect(() => {
+    if (settings) {
+      setLocalSettings(settings);
+    }
+  }, [settings]);
+
+  // Gemini 3.8 API Key State
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [aiConfigStatus, setAiConfigStatus] = useState<{
+    hasValidKey: boolean;
+    maskedKey: string;
+    aiModel: string;
+    source: string;
+  } | null>(null);
+  const [isSavingKey, setIsSavingKey] = useState(false);
+
   // Linux AppSec Tools Diagnostic State
   const [toolsStatus, setToolsStatus] = useState<{
     platform: string;
@@ -43,7 +59,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   useEffect(() => {
     fetchToolsStatus();
+    fetchAiConfig();
   }, []);
+
+  const fetchAiConfig = async () => {
+    try {
+      const res = await fetch('/api/settings/ai-config');
+      if (res.ok) {
+        const data = await res.json();
+        setAiConfigStatus(data);
+        if (data.aiModel) {
+          setLocalSettings(prev => ({ ...prev, aiModel: data.aiModel }));
+        }
+      }
+    } catch {}
+  };
+
+  const handleSaveApiKey = async () => {
+    setIsSavingKey(true);
+    try {
+      const res = await fetch('/api/settings/ai-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+          aiModel: localSettings.aiModel || 'gemini-3.8'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiConfigStatus(data);
+        setApiKeyInput('');
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3000);
+        fetchToolsStatus();
+      }
+    } catch {} finally {
+      setIsSavingKey(false);
+    }
+  };
 
   const fetchToolsStatus = async () => {
     setIsLoadingTools(true);
@@ -60,15 +114,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     onSaveSettings(localSettings);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    await handleSaveApiKey();
   };
 
   const handleReset = () => {
     const defaults: PlatformSettings = {
-      aiModel: 'gemini-2.5-pro',
+      aiModel: 'gemini-3.8',
       enableSAST: true,
       enableSCA: true,
       enableSecrets: true,
@@ -124,9 +177,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {savedSuccess && (
         <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-xs font-mono text-emerald-300 flex items-center space-x-2 animate-in fade-in">
           <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          <span>Platform configuration updated successfully. Applied to subsequent scan cycles.</span>
+          <span>Platform configuration and Gemini 3.8 API settings saved and activated live!</span>
         </div>
       )}
+
+      {/* Gemini 3.8 API Key & Live AI Connection Card */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-[#111111] via-blue-950/20 to-[#111111] border border-blue-900/50 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5">
+            <Key className="h-5 w-5 text-blue-400" />
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                Google Gemini 3.8 API Key Configuration
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Enter your Gemini API Key below (or in <code className="text-blue-300">data/.env</code> / <code className="text-blue-300">.env</code>) to power AI Analyst Chat, AI Patch Synthesis, Executive Risk Correlation, and Red Team Intelligence.
+              </p>
+            </div>
+          </div>
+
+          <div className="shrink-0">
+            {aiConfigStatus?.hasValidKey ? (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-700/60">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>ACTIVE KEY: {aiConfigStatus.maskedKey} ({aiConfigStatus.aiModel})</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-700/60">
+                <span>HYBRID SDK READY • PASTE GEMINI API KEY BELOW</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <input
+            type="password"
+            value={apiKeyInput}
+            onChange={(e) => setApiKeyInput(e.target.value)}
+            placeholder={
+              aiConfigStatus?.hasValidKey
+                ? `Active key loaded (${aiConfigStatus.maskedKey} via ${aiConfigStatus.source}) — paste new key to replace...`
+                : 'Paste your GEMINI_API_KEY here (e.g. AIzaSy...)'
+            }
+            className="flex-1 px-4 py-2.5 bg-black border border-[#2A2A2A] focus:border-blue-500 rounded-xl text-xs font-mono text-white placeholder-gray-500 focus:outline-none"
+          />
+          <button
+            onClick={handleSaveApiKey}
+            disabled={isSavingKey}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 flex items-center justify-center space-x-2"
+          >
+            <Key className="h-3.5 w-3.5" />
+            <span>{isSavingKey ? 'Activating...' : 'Save & Activate API Key'}</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-mono text-gray-400 flex flex-wrap items-center gap-x-6 gap-y-1">
+          <span>• File Option 1 (Live Hot-Reload): <code className="text-emerald-400">AI-Application-Security-Auditor-Platform/data/.env</code></span>
+          <span>• File Option 2 (Project Root): <code className="text-blue-400">AI-Application-Security-Auditor-Platform/.env</code></span>
+        </div>
+      </div>
 
       {/* Linux AppSec Tools Diagnostic Center */}
       <div className="p-6 rounded-2xl bg-[#111111] border border-[#1F1F1F] space-y-4">
@@ -228,9 +338,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="space-y-3">
             {[
               {
+                id: 'gemini-3.8',
+                name: 'Gemini 3.8 (Security Specialist)',
+                badge: 'DEFAULT • ACTIVE',
+                desc: 'Next-generation multi-file taint tracking, semantic AST reasoning, zero-shot exploit chain correlation, and automated patch synthesis.'
+              },
+              {
                 id: 'gemini-2.5-pro',
-                name: 'Gemini 2.5 Pro (Security Specialist)',
-                badge: 'RECOMMENDED',
+                name: 'Gemini 2.5 Pro (Deep Architectural Audit)',
+                badge: 'PRO',
                 desc: 'Deep multi-file taint tracking, semantic AST reasoning, and zero-shot exploit chain synthesis.'
               },
               {
@@ -241,7 +357,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               },
               {
                 id: 'hybrid-sast-llm',
-                name: 'Hybrid Deterministic SAST + GenAI',
+                name: 'Hybrid Deterministic SAST + Gemini 3.8',
                 badge: 'HIGH ACCURACY',
                 desc: 'Combines local regularized rule evaluation with LLM-guided root cause explanation.'
               }
@@ -304,8 +420,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <input
                   type="checkbox"
-                  checked={(localSettings as any)[eng.key]}
-                  onChange={(e) => setLocalSettings({ ...localSettings, [eng.key]: e.target.checked })}
+                  checked={((localSettings as any)[eng.key] ?? true)}
+                  onChange={(e) => {
+                    const updated = { ...localSettings, [eng.key]: e.target.checked };
+                    setLocalSettings(updated);
+                    onSaveSettings(updated);
+                    setSavedSuccess(true);
+                    setTimeout(() => setSavedSuccess(false), 2500);
+                  }}
                   className="h-4 w-4 rounded accent-blue-600"
                 />
               </label>

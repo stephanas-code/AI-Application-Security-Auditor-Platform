@@ -10,8 +10,11 @@ services:
       - PORT=3000
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8}
     volumes:
-      - ./scans:/tmp/appsec_scans
+      - ./scans:/tmp/appsec_auditor_workspaces
+      - ./data:/app/data
+      - ./.env:/app/.env
     dns:
       - 8.8.8.8
       - 1.1.1.1

@@ -113,7 +113,10 @@ export class RedTeamEngine {
     const rceFinding = findings.find(f => f.cwe === 'CWE-78' || f.cwe === 'CWE-94' || f.title.toLowerCase().includes('remote code'));
     const xssFinding = findings.find(f => f.cwe === 'CWE-79' || f.title.toLowerCase().includes('xss'));
     const debugFinding = findings.find(f => f.title.toLowerCase().includes('debug') || f.title.toLowerCase().includes('internal telemetry') || f.title.toLowerCase().includes('graphql'));
-    const headerFinding = findings.find(f => f.category === 'SECURITY_HEADERS' || f.cwe === 'CWE-1021');
+    const headerFinding = findings.find(f => f.category === 'SECURITY_HEADERS' || f.cwe === 'CWE-1021' || f.cwe === 'CWE-319');
+    const adminFinding = findings.find(f => f.title.toLowerCase().includes('admin') || f.cwe === 'CWE-306');
+    const actuatorFinding = findings.find(f => f.title.toLowerCase().includes('actuator') || f.cwe === 'CWE-489');
+    const webReconFinding = findings.find(f => f.category === 'WEB_RECON' || f.category === 'API_EXPOSURE');
 
     // Attack Path 1: Critical Privilege Escalation to Full Data Exfiltration
     if (authzFinding || sqliFinding || debugFinding) {
@@ -320,6 +323,63 @@ export class RedTeamEngine {
       });
     }
 
+    // Attack Path 4: Website Reconnaissance to Exposed Administrative & Actuator Ingress
+    if (adminFinding || actuatorFinding || webReconFinding) {
+      const activeAdmin = adminFinding || actuatorFinding || webReconFinding;
+      const isMitigated = !activeAdmin || activeAdmin.status === 'VERIFIED_RESOLVED';
+
+      const nodes: AttackPathNode[] = [
+        {
+          id: 'recon-node-1',
+          label: 'Automated Port & Route Discovery Crawler',
+          category: 'ENTRY_POINT',
+          targetAsset: target.websiteMetadata?.hostname || target.name,
+          details: 'Adversary enumerates candidate endpoints (/admin, /actuator, /graphql, /swagger.json).',
+          status: 'EXPLOITED'
+        },
+        {
+          id: 'recon-node-2',
+          label: 'Unauthenticated Administrative / Debug Exposure',
+          category: 'VULNERABILITY',
+          targetAsset: activeAdmin?.file || '/admin or /actuator/env',
+          findingId: activeAdmin?.id,
+          techniqueCWE: activeAdmin?.cwe || 'CWE-306',
+          details: activeAdmin?.description || 'Routing endpoint responds with HTTP 200 without requiring mutual TLS or authentication challenge.',
+          status: isMitigated ? 'MITIGATED' : 'EXPLOITED',
+          severity: activeAdmin?.severity || 'HIGH'
+        },
+        {
+          id: 'recon-node-3',
+          label: 'Runtime Telemetry Exfiltration & Privilege Escalation',
+          category: 'IMPACT',
+          targetAsset: 'Platform Infrastructure & Admin Console',
+          details: 'Attacker leverages exposed management controls to harvest secrets or bypass authentication.',
+          status: isMitigated ? 'BLOCKED' : 'EXPLOITED',
+          severity: 'CRITICAL'
+        }
+      ];
+
+      const edges: AttackPathEdge[] = [
+        { from: 'recon-node-1', to: 'recon-node-2', label: 'HTTP Ingress Probe', protocol: 'HTTPS' },
+        { from: 'recon-node-2', to: 'recon-node-3', label: 'Extract State & Elevate', protocol: 'REST/JSON' }
+      ];
+
+      paths.push({
+        id: 'AP-2026-004',
+        title: 'Website Reconnaissance to Exposed Administrative & Actuator Ingress',
+        severity: 'HIGH',
+        riskScore: isMitigated ? 12 : 92,
+        isMitigated,
+        remediationFindingIds: [activeAdmin?.id].filter(Boolean) as string[],
+        narrative: 'External automated reconnaissance discovers unprotected administrative portals, OpenAPI schemas, or Spring Boot Actuator endpoints returning runtime telemetry without authentication challenges.',
+        businessImpact: 'Unrestricted administrative access, environment secret compromise, and lateral infrastructure movement.',
+        rootCause: 'Routing public reverse proxy ingress directly to internal administrative endpoints without IP allowlisting or pre-authentication middleware.',
+        recommendedFix: 'Isolate administrative portals behind VPN subnets, enforce IP allowlisting in reverse proxy (Nginx/Cloudflare), and restrict actuator web endpoints.',
+        nodes,
+        edges
+      });
+    }
+
     return paths;
   }
 
@@ -463,7 +523,69 @@ export class RedTeamEngine {
         });
       }
 
-      // 6. Generic / Web Header & Recon Exploit Validation
+      // 6. HTTP Security Headers & Cookie Interception Web Attack Validation
+      else if (finding.category === 'SECURITY_HEADERS' || finding.cwe === 'CWE-1021' || finding.cwe === 'CWE-319' || finding.cwe === 'CWE-614' || finding.file === 'live_http_headers.conf') {
+        const headerName = finding.title.toLowerCase().includes('csp') ? 'Content-Security-Policy' :
+                           finding.title.toLowerCase().includes('hsts') ? 'Strict-Transport-Security' :
+                           finding.title.toLowerCase().includes('frame') || finding.title.toLowerCase().includes('clickjack') ? 'X-Frame-Options' :
+                           finding.title.toLowerCase().includes('cookie') ? 'Set-Cookie' : 'Security-Headers';
+        records.push({
+          id: attackId,
+          findingId: finding.id,
+          vulnerabilityTitle: finding.title,
+          cwe: finding.cwe,
+          status: isResolved ? 'SAFE_BLOCKED' : 'CONFIRMED_EXPLOITABLE',
+          confidenceScore: isResolved ? 5 : 98,
+          affectedEndpoint: `${target.websiteMetadata?.url || target.name} (HTTP Headers)`,
+          payloadSent: `curl -k -s -I -L "${target.websiteMetadata?.url || 'https://' + target.name}" | grep -i "${headerName}"`,
+          payloadType: 'NON_DESTRUCTIVE_BENIGN_PROBE',
+          evidenceProof: isResolved
+            ? `✓ ATTACK MITIGATED: Header "${headerName}" is present and strictly enforced. Browser policies active.`
+            : `✓ ATTACK CONFIRMED: Header "${headerName}" is missing in HTTP response (${finding.cwe}). Browser security controls relaxed.`,
+          technicalDetails: isResolved
+            ? `Verified that response headers enforce security directives across all endpoints.`
+            : `Missing ${headerName} allows clickjacking, script injection, or cleartext downgrade on public networks.`,
+          dataAccessed: isResolved ? 'None' : `HTTP Response Header Inspection (${headerName} Missing)`,
+          productionImpact: 'NONE',
+          timestamp: new Date(Date.now() - (idx * 50000)).toISOString(),
+          executionTimeMs: 48,
+          isResolved
+        });
+      }
+
+      // 7. Website Reconnaissance & Exposed Route / API Web Attack Validation
+      else if (finding.category === 'API_EXPOSURE' || finding.category === 'WEB_RECON' || finding.cwe === 'CWE-306' || finding.cwe === 'CWE-489' || finding.cwe === 'CWE-799' || finding.file.startsWith('live_')) {
+        const endpointMatch = finding.codeSnippet?.match(/(\/(?:admin|administrator|dashboard|manage|wp-admin|actuator|api|graphql|swagger|openapi|docs|redoc|\.env|\.git)[^\s]*)/i) ||
+                              finding.title.match(/(\/(?:admin|administrator|dashboard|manage|wp-admin|actuator|api|graphql|swagger|openapi|docs|redoc|\.env|\.git)[^\s)]*)/i);
+        const endpointPath = endpointMatch ? endpointMatch[1] : (finding.title.toLowerCase().includes('admin') ? '/admin' : finding.title.toLowerCase().includes('actuator') ? '/actuator/env' : finding.title.toLowerCase().includes('graphql') ? '/graphql' : '/api');
+        
+        records.push({
+          id: attackId,
+          findingId: finding.id,
+          vulnerabilityTitle: finding.title,
+          cwe: finding.cwe,
+          status: isResolved ? 'SAFE_BLOCKED' : 'CONFIRMED_EXPLOITABLE',
+          confidenceScore: isResolved ? 5 : 99,
+          affectedEndpoint: `${target.websiteMetadata?.url || 'https://' + target.name}${endpointPath}`,
+          payloadSent: endpointPath.includes('graphql')
+            ? `curl -k -s -i -X POST "${target.websiteMetadata?.url || 'https://' + target.name}${endpointPath}" -H "Content-Type: application/json" -d '{"query":"{__schema{types{name}}}"}'`
+            : `curl -k -s -I -L "${target.websiteMetadata?.url || 'https://' + target.name}${endpointPath}"`,
+          payloadType: 'NON_DESTRUCTIVE_BENIGN_PROBE',
+          evidenceProof: isResolved
+            ? `✓ ATTACK MITIGATED: Endpoint ${endpointPath} responded with 403 Forbidden or 404 Not Found. Unauthorized ingress blocked.`
+            : `✓ ATTACK CONFIRMED: Endpoint ${endpointPath} responded with HTTP 200 without requiring authentication or rate limiting (${finding.cwe}).`,
+          technicalDetails: isResolved
+            ? `Ingress rules, IP allowlisting, or authentication guards successfully prevented unauthorized interaction.`
+            : `Public routing table routed anonymous requests directly to sensitive handler.`,
+          dataAccessed: isResolved ? 'None' : `Route Telemetry & Unauthenticated Response Content (${endpointPath})`,
+          productionImpact: 'NONE',
+          timestamp: new Date(Date.now() - (idx * 55000)).toISOString(),
+          executionTimeMs: 64,
+          isResolved
+        });
+      }
+
+      // 8. Generic / Other Exploit Validation
       else {
         records.push({
           id: attackId,

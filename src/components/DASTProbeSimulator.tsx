@@ -165,71 +165,70 @@ export const DASTProbeSimulator: React.FC<DASTProbeSimulatorProps> = ({ findings
     }
   };
 
-  const handleRunPayloadProbe = () => {
+  const handleRunPayloadProbe = async () => {
     setIsProbing(true);
     setProbeResult(null);
 
     const ep = endpoints.find(e => e.id === selectedEndpoint);
     const isPatched = ep?.isPatched;
 
-    setTimeout(() => {
-      if (selectedEndpoint === 'sqli') {
-        if (!isPatched) {
-          setProbeResult({
-            status: 200,
-            responseTimeMs: 38,
-            vulnerable: true,
-            serverOutput: `HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\n  "success": true,\n  "count": 4820,\n  "data": [\n    { "id": 1, "account_id": 1002, "amount": 9500.00, "memo": "VIP Payout" },\n    { "id": 2, "account_id": 9999, "amount": 142000.00, "memo": "Corp Reserve" },\n    { "id": 3, "account_id": 4012, "amount": 850.50, "memo": "Wire" }\n  ]\n}`,
-            analysis: 'EXPLOIT SUCCESSFUL: The database executed the injected `OR 1=1` tautology, dumping cross-account customer transaction data without access control.'
-          });
-        } else {
-          setProbeResult({
-            status: 200,
-            responseTimeMs: 22,
-            vulnerable: false,
-            serverOutput: `HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\n  "success": true,\n  "count": 0,\n  "data": []\n}`,
-            analysis: 'DEFENSE VERIFIED: Parameterized query placeholder handled payload safely as a literal string. Zero unintended rows exposed.'
-          });
-        }
-      } else if (selectedEndpoint === 'cmdi') {
-        if (!isPatched) {
-          setProbeResult({
-            status: 200,
-            responseTimeMs: 64,
-            vulnerable: true,
-            serverOutput: `HTTP/1.1 200 OK\nContent-Type: text/plain\n\nroot\nroot:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\nbin:x:2:2:bin:/bin:/usr/sbin/nologin`,
-            analysis: 'EXPLOIT SUCCESSFUL: Shell command delimiter `;` bypassed ping validation and executed arbitrary commands under root worker context.'
-          });
-        } else {
-          setProbeResult({
-            status: 400,
-            responseTimeMs: 14,
-            vulnerable: false,
-            serverOutput: `HTTP/1.1 400 Bad Request\nContent-Type: application/json\n\n{\n  "error": "Invalid host format. Alphanumeric IP or domain required without shell metacharacters."\n}`,
-            analysis: 'DEFENSE VERIFIED: Strict regex validation rejected shell metacharacters before subshell spawning.'
-          });
-        }
+    try {
+      // Construct real target endpoint URL from httpUrl + endpoint path
+      const baseOrigin = httpUrl.startsWith('http') ? httpUrl.replace(/\/$/, '') : `https://${httpUrl.replace(/\/$/, '')}`;
+      const cleanPath = (ep?.path || '/').split('?')[0];
+      const fullTargetUrl = `${baseOrigin}${cleanPath}`;
+
+      const res = await fetch('/api/scan/dast/fuzz-endpoint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUrl: fullTargetUrl,
+          method: ep?.method || 'GET',
+          paramName: selectedEndpoint === 'sqli' ? 'accountId' : selectedEndpoint === 'cmdi' ? 'host' : 'role',
+          payload: customPayload
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const isVuln =
+          data.analysisVerdict === 'VULNERABLE_SQL_ERROR' ||
+          data.analysisVerdict === 'VULNERABLE_REFLECTED_PAYLOAD' ||
+          data.analysisVerdict === 'SERVER_EXCEPTION_5XX' ||
+          (!isPatched && data.statusCode === 200 && selectedEndpoint === 'auth');
+
+        const headerLines = Object.entries(data.headers || {})
+          .slice(0, 8)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('\n');
+
+        setProbeResult({
+          status: data.statusCode,
+          responseTimeMs: data.elapsedMs,
+          vulnerable: isVuln,
+          serverOutput: `HTTP/1.1 ${data.statusCode}\nRequest-URL: ${data.requestUrl}\n${headerLines}\n\n${data.bodySnippet || '(Empty response body)'}`,
+          analysis: data.analysisSummary
+        });
       } else {
-        if (!isPatched) {
-          setProbeResult({
-            status: 200,
-            responseTimeMs: 45,
-            vulnerable: true,
-            serverOutput: `HTTP/1.1 200 OK\nContent-Type: application/json\n\n[\n  { "id": 1, "username": "admin", "password_hash": "$2b$12$e8Y...fX" },\n  { "id": 2, "username": "cfo", "password_hash": "$2b$12$k9L...mQ" }\n]`,
-            analysis: 'EXPLOIT SUCCESSFUL: Administrative dump endpoint leaked customer password hashes without token authorization.'
-          });
-        } else {
-          setProbeResult({
-            status: 401,
-            responseTimeMs: 12,
-            vulnerable: false,
-            serverOutput: `HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\n  "error": "Authentication token required. Insufficient privileges for SUPER_ADMIN role."\n}`,
-            analysis: 'DEFENSE VERIFIED: Auth middleware enforced role check and rejected unauthenticated request.'
-          });
-        }
+        setProbeResult({
+          status: 0,
+          responseTimeMs: 0,
+          vulnerable: false,
+          serverOutput: `Probe Error: ${data.error || 'Target host unreachable'}`,
+          analysis: `Could not reach ${fullTargetUrl}. Ensure the target web server is running and reachable from the Linux host.`
+        });
       }
+    } catch (err: any) {
+      setProbeResult({
+        status: 0,
+        responseTimeMs: 0,
+        vulnerable: false,
+        serverOutput: `Network Error: ${err.message}`,
+        analysis: 'Failed to dispatch active DAST payload probe via backend.'
+      });
+    } finally {
       setIsProbing(false);
-    }, 450);
+    }
   };
 
   return (

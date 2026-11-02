@@ -1,17 +1,22 @@
 FROM node:20-bookworm-slim
 
-# Install system dependencies, nmap, python3, pip, git, and core tools
+# Install system dependencies, nmap, python3, pip, git, binary reverse engineering & crypto tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     git \
     curl \
     wget \
+    openssl \
+    unzip \
+    binutils \
+    file \
     python3 \
     python3-pip \
     python3-venv \
     build-essential \
     ca-certificates \
     jq \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python AppSec tools: Bandit, pip-audit, Semgrep
@@ -30,14 +35,14 @@ RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/
 
 WORKDIR /app
 
-# Install Node dependencies
+# Install Node dependencies natively inside Linux container
 COPY package*.json ./
-RUN npm ci || npm install
+RUN npm install
 
 # Copy application source code
 COPY . .
 
-# Build frontend and server bundle
+# Build frontend bundle
 RUN npm run build
 
 EXPOSE 3000

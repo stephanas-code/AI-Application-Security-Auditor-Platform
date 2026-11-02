@@ -1,29 +1,29 @@
 import React, { useState } from 'react';
-import { 
-  Radio, 
-  Globe, 
-  ShieldAlert, 
-  Archive, 
-  Download, 
-  Camera, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Layers, 
-  Terminal, 
-  ExternalLink, 
-  Flame, 
-  Clock, 
-  Building2, 
-  HeartPulse, 
-  Landmark, 
-  Factory, 
-  Cloud, 
-  Cpu, 
-  FileText, 
-  Key, 
-  Lock, 
-  Share2, 
-  Filter, 
+import {
+  Radio,
+  Globe,
+  ShieldAlert,
+  Archive,
+  Download,
+  Camera,
+  CheckCircle2,
+  AlertTriangle,
+  Layers,
+  Terminal,
+  ExternalLink,
+  Flame,
+  Clock,
+  Building2,
+  HeartPulse,
+  Landmark,
+  Factory,
+  Cloud,
+  Cpu,
+  FileText,
+  Key,
+  Lock,
+  Share2,
+  Filter,
   Sparkles,
   ShieldCheck,
   Zap,
@@ -144,13 +144,37 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
 
   const activeArticle = selectedArticle || filteredFeed[0] || null;
 
-  // Handle Export of Forensic Evidence Bundle
-  const handleExportForensicBundle = () => {
+  // Helper: Real Web Crypto SHA-256 Hash Computation
+  const computeRealSha256 = async (text: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  };
+
+  // Handle Export of Forensic Evidence Bundle with Real Cryptographic SHA-256 Hashes
+  const handleExportForensicBundle = async () => {
     setIsExporting(true);
 
-    setTimeout(() => {
-      const generatedSha = `SHA256:${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
-      const sealHash = snapshotHash || `FORENSIC-SEAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Date.now()}`;
+    try {
+      const filesManifest = await Promise.all(
+        target.files.map(async (f) => ({
+          path: f.path,
+          language: f.language,
+          sizeBytes: f.size,
+          fileHash: `SHA256:${await computeRealSha256(f.content || '')}`
+        }))
+      );
+
+      const overallPayloadString = JSON.stringify({
+        targetName: target.name,
+        filesManifest,
+        findingsIds: scanResult.findings.map(f => `${f.id}:${f.status}`)
+      });
+      const realBundleSha = await computeRealSha256(overallPayloadString);
+      const sealHash = snapshotHash || `SHA256-SEAL:${realBundleSha.substring(0, 32).toUpperCase()}`;
 
       const forensicBundle = {
         forensicManifest: {
@@ -159,18 +183,13 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
           targetPlatform: target.platform,
           exportTimestamp: new Date().toISOString(),
           examinerSigner: 'AI Security Auditor & Forensic Incident Response Subsystem',
-          verificationSha256: generatedSha,
+          verificationSha256: `SHA256:${realBundleSha}`,
           cryptographicSeal: sealHash,
           environmentIntegrityStatus: 'VERIFIED_CHAIN_OF_CUSTODY'
         },
         targetAssetEnvironment: {
           totalSourceFiles: target.files.length,
-          filesManifest: target.files.map(f => ({
-            path: f.path,
-            language: f.language,
-            sizeBytes: f.size,
-            fileHash: `SHA256:${Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
-          })),
+          filesManifest,
           websiteMetadata: target.websiteMetadata || null,
           targetDescription: target.description
         },
@@ -233,15 +252,16 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
-
+    } finally {
       setIsExporting(false);
-    }, 500);
+    }
   };
 
-  // Handle Forensic Snapshot Capture
-  const handleCaptureSnapshot = () => {
-    const hash = `SHA256-SNAP-${Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('').toUpperCase()}`;
-    setSnapshotHash(hash);
+  // Handle Real Cryptographic Forensic Snapshot Capture
+  const handleCaptureSnapshot = async () => {
+    const contentToHash = target.files.map(f => `${f.path}:${f.content}`).join('\n') + JSON.stringify(scanResult.metrics);
+    const hex = await computeRealSha256(contentToHash);
+    setSnapshotHash(`SHA256:${hex.toUpperCase()}`);
     setSnapshotCaptured(true);
   };
 
@@ -321,11 +341,10 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
       <div className="flex items-center space-x-2 border-b border-[#1F1F1F] pb-2">
         <button
           onClick={() => setActiveSubTab('newsroom')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'newsroom'
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'newsroom'
               ? 'bg-red-950/80 text-red-300 border border-red-800'
               : 'text-gray-400 hover:text-white bg-[#141414] border border-[#1F1F1F]'
-          }`}
+            }`}
         >
           <Radio className="h-4 w-4 text-red-400" />
           <span>Emerging Dark Web Threats</span>
@@ -333,11 +352,10 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
 
         <button
           onClick={() => setActiveSubTab('industries')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'industries'
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'industries'
               ? 'bg-blue-950/80 text-blue-300 border border-blue-800'
               : 'text-gray-400 hover:text-white bg-[#141414] border border-[#1F1F1F]'
-          }`}
+            }`}
         >
           <Building2 className="h-4 w-4 text-blue-400" />
           <span>Daily Targeted Industries</span>
@@ -345,11 +363,10 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
 
         <button
           onClick={() => setActiveSubTab('forensics')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'forensics'
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'forensics'
               ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
               : 'text-gray-400 hover:text-white bg-[#141414] border border-[#1F1F1F]'
-          }`}
+            }`}
         >
           <Fingerprint className="h-4 w-4 text-emerald-400" />
           <span>Forensic Research & Chain of Custody</span>
@@ -371,11 +388,10 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
               <button
                 key={cat.id}
                 onClick={() => setCategoryFilter(cat.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  categoryFilter === cat.id
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${categoryFilter === cat.id
                     ? 'bg-blue-600 text-white shadow'
                     : 'bg-[#161616] text-gray-400 hover:text-white border border-[#1F1F1F]'
-                }`}
+                  }`}
               >
                 {cat.label}
               </button>
@@ -398,17 +414,15 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
                     <div
                       key={article.id}
                       onClick={() => setSelectedArticle(article)}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
-                        isSelected
+                      className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${isSelected
                           ? 'bg-[#181818] border-red-500/80 shadow-lg'
                           : 'bg-[#141414] border-[#1F1F1F] hover:border-[#333333] hover:bg-[#161616]'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${
-                          article.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
-                          'bg-orange-950 text-orange-400 border border-orange-800'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${article.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
+                            'bg-orange-950 text-orange-400 border border-orange-800'
+                          }`}>
                           {article.category.replace('_', ' ')}
                         </span>
                         <span className="text-[10px] font-mono text-gray-500">{article.publishedAt}</span>
@@ -470,9 +484,8 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
                       {activeArticle.targetedIndustries.map((ind, idx) => (
                         <div key={idx} className="p-2.5 rounded-lg bg-black/50 border border-[#222222] space-y-1">
                           <span className="text-[11px] font-bold text-white block truncate">{ind.industry}</span>
-                          <span className={`text-[9px] font-mono font-bold uppercase ${
-                            ind.impactLevel === 'SEVERE' ? 'text-red-400' : 'text-orange-400'
-                          }`}>
+                          <span className={`text-[9px] font-mono font-bold uppercase ${ind.impactLevel === 'SEVERE' ? 'text-red-400' : 'text-orange-400'
+                            }`}>
                             {ind.impactLevel} EXPOSURE
                           </span>
                         </div>
@@ -595,10 +608,9 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
                       <div className="p-2 rounded-xl bg-[#1A1A1A] text-blue-400">
                         <Icon className="h-5 w-5" />
                       </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                        ind.riskLevel === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
-                        'bg-orange-950 text-orange-400 border border-orange-800'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${ind.riskLevel === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
+                          'bg-orange-950 text-orange-400 border border-orange-800'
+                        }`}>
                         {ind.riskLevel} RISK
                       </span>
                     </div>
@@ -681,11 +693,10 @@ export const ThreatIntelForensicsView: React.FC<ThreatIntelForensicsViewProps> =
                 >
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                        f.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
-                        f.severity === 'HIGH' ? 'bg-orange-950 text-orange-400 border border-orange-800' :
-                        'bg-amber-950 text-amber-400 border border-amber-800'
-                      }`}>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${f.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
+                          f.severity === 'HIGH' ? 'bg-orange-950 text-orange-400 border border-orange-800' :
+                            'bg-amber-950 text-amber-400 border border-amber-800'
+                        }`}>
                         {f.severity}
                       </span>
                       <span className="font-mono text-gray-400 text-[10px]">{f.cwe}</span>

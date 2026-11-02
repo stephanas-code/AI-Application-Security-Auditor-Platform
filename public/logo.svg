@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 128" width="512" height="128">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="logoBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B0E"/>
+      <stop offset="100%" stop-color="#121218"/>
+    </linearGradient>
+
+    <!-- Shield Crimson Gradient -->
+    <linearGradient id="logoCrimson" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3B30"/>
+      <stop offset="50%" stop-color="#E11D48"/>
+      <stop offset="100%" stop-color="#BE123C"/>
+    </linearGradient>
+
+    <!-- Cyber Cyan Accent Gradient -->
+    <linearGradient id="logoCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Left: Shield Emblem (centered at x=64, y=64) -->
+  <g transform="translate(10, 8)">
+    <!-- Shield Outer Glow & Background -->
+    <path d="M 54,12 
+             L 88,25 
+             C 88,58 74,84 54,98 
+             C 34,84 20,58 20,25 
+             Z" 
+          fill="url(#logoCrimson)" 
+          opacity="0.2"/>
+
+    <!-- Shield Contour -->
+    <path d="M 54,14 
+             L 84,26 
+             C 84,56 71,80 54,92 
+             C 37,80 24,56 24,26 
+             Z" 
+          fill="none" 
+          stroke="url(#logoCrimson)" 
+          stroke-width="3"
+          stroke-linejoin="round"/>
+
+    <!-- Left Wing (M facet) -->
+    <path d="M 33,34 
+             L 43,34 
+             L 53,52 
+             L 46,65 
+             L 37,49 
+             L 37,74 
+             L 30,74 
+             Z" 
+          fill="url(#logoCyan)" 
+          filter="url(#logoGlow)"/>
+
+    <!-- Right Wing (S facet) -->
+    <path d="M 74,36 
+             L 56,36 
+             L 50,45 
+             L 63,45 
+             C 68,45 72,48 72,53 
+             C 72,59 67,63 60,63 
+             L 52,63 
+             L 52,72 
+             L 61,72 
+             C 72,72 79,65 79,54 
+             C 79,43 74,38 74,36 
+             Z" 
+          fill="#FFFFFF"/>
+
+    <!-- Diagonal Core Lightning Bolt -->
+    <polygon points="54,22 57,42 51,42 55,58 48,44 53,44" fill="#FF3B30" filter="url(#logoGlow)"/>
+
+    <circle cx="54" cy="14" r="2.5" fill="#38BDF8"/>
+  </g>
+
+  <!-- Right: Typography "MgSecura" -->
+  <g transform="translate(126, 0)">
+    <!-- "Mg" in Electric Cyan -->
+    <text x="0" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="900" fill="url(#logoCyan)" letter-spacing="-1">Mg</text>
+    
+    <!-- "Secura" in Pure White & Crimson dot -->
+    <text x="64" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="900" fill="#FFFFFF" letter-spacing="-0.5">Secura</text>
+
+    <!-- Version / Engine Badge -->
+    <rect x="238" y="44" width="62" height="22" rx="6" fill="#1E1B4B" stroke="#4338CA" stroke-width="1.5"/>
+    <text x="246" y="59" font-family="'Courier New', Courier, monospace" font-size="10" font-weight="800" fill="#818CF8">AI 3.8</text>
+
+    <!-- Subtitle: Autonomous AppSec & Offensive Auditor -->
+    <text x="2" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#9CA3AF" letter-spacing="2.5">AI APPLICATION SECURITY AUDITOR</text>
+  </g>
+</svg>
